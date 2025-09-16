@@ -1,3 +1,4 @@
 timestamp,device_id,ip_address,hostname,ping_success,response_time_ms,error_message,merk,os,kondisi,id_lokasi
-2025-09-16T10:19:52.881267,2,192.168.1.12,host-inventaris-2,False,,No response (timeout),West-Wisoky,Ubuntu 22.04,baik,5
-2025-09-16T10:19:52.881538,3,192.168.1.13,host-inventaris-3,False,,No response (timeout),Walker LLC,Debian 12,baik,10
+2025-09-16T10:49:53.953709,2,192.168.1.12,host-inventaris-2,False,,No response (timeout),West-Wisoky,Ubuntu 22.04,baik,5
+2025-09-16T10:49:53.953508,1,192.168.1.11,host-inventaris-1,False,,No response (timeout),Sanford-Stiedemann,Windows 10,baik,8
+2025-09-16T10:49:53.953220,3,192.168.1.13,host-inventaris-3,False,,No response (timeout),Walker LLC,Debian 12,baik,10

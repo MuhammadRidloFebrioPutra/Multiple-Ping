@@ -25,9 +25,15 @@ class CSVManager:
             'merk', 'os', 'kondisi', 'id_lokasi'
         ]
     
-    def write_ping_results_to_csv(self, results: List[Dict]):
+    def write_ping_results_to_csv(self, results: List[Dict], active_ips: List[str] = None):
         """
-        Write/Update ping results to CSV file - updates existing IP entries instead of appending
+        Write/Update ping results to CSV file.
+        Behavior:
+        - Update (replace) row per IP yang masih aktif
+        - Hapus IP yang sudah tidak ada lagi (misal kondisi berubah jadi 'hilang') jika active_ips disediakan
+        Param:
+          results: list hasil ping cycle sekarang
+          active_ips: daftar IP aktif dari database (optional). Jika diberikan, CSV akan dipruning sesuai daftar ini.
         """
         timestamp = datetime.now()
         csv_filename = f"ping_results_{timestamp.strftime('%Y%m%d')}.csv"
@@ -43,6 +49,15 @@ class CSVManager:
                         # Use ip_address as key for existing data
                         existing_data[row['ip_address']] = row
             
+            # Jika active_ips diberikan, prune entries yang tidak lagi aktif
+            if active_ips is not None:
+                active_set = set(active_ips)
+                removed = [ip for ip in existing_data.keys() if ip not in active_set]
+                if removed:
+                    for ip in removed:
+                        existing_data.pop(ip, None)
+                    logger.info(f"Pruned {len(removed)} stale IP(s) from CSV: {removed}")
+
             # Update existing data with new results
             for result in results:
                 ip_address = result['ip_address']
@@ -60,7 +75,7 @@ class CSVManager:
                     writer.writerow(row_data)
                     
             logger.info(f"Successfully updated {len(results)} ping results in {csv_filename}")
-            logger.info(f"Total unique IPs in CSV: {len(existing_data)}")
+            logger.info(f"Total active unique IPs in CSV: {len(existing_data)}")
             
         except Exception as e:
             logger.error(f"Error writing to CSV file: {e}")
