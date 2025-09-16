@@ -387,3 +387,31 @@ def force_database_reload():
             'success': False,
             'error': str(e)
         }), 500
+
+@ping_bp.route('/ping/csv/rebuild', methods=['POST'])
+def rebuild_today_csv():
+    """
+    Rebuild today's CSV file from current active devices (fresh ping cycle forced)
+    """
+    try:
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({'success': False, 'error': 'Multi-ping service not available'}), 503
+
+        # Ambil devices terbaru
+        devices = service.database_monitor.get_devices_from_database()
+        if not devices:
+            return jsonify({'success': False, 'error': 'No active devices found'}), 404
+
+        # Lakukan ping sekali (synchronous)
+        results = service.ping_executor.ping_devices_concurrent(devices)
+        active_ips = [d.ip for d in devices if d.ip]
+        service.csv_manager.write_ping_results_to_csv(results, active_ips=active_ips)
+
+        return jsonify({
+            'success': True,
+            'message': 'CSV rebuilt successfully from current database state',
+            'device_count': len(results)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

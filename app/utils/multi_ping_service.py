@@ -59,6 +59,7 @@ class MultiPingService:
             
             # Execute concurrent pings
             results = self.ping_executor.ping_devices_concurrent(devices)
+            active_ips = [d.ip for d in devices if d.ip]
             
             if results:
                 # Calculate and log statistics
@@ -67,8 +68,8 @@ class MultiPingService:
                            f"({stats['success_rate']}%), "
                            f"Avg response: {stats['average_response_time_ms']}ms")
                 
-                # Write results to CSV
-                self.csv_manager.write_ping_results_to_csv(results)
+                # Write results to CSV with pruning using current active IPs
+                self.csv_manager.write_ping_results_to_csv(results, active_ips=active_ips)
                 
                 cycle_duration = time.time() - cycle_start
                 logger.debug(f"Complete ping cycle duration: {cycle_duration:.2f}s")
