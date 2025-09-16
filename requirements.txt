@@ -1,0 +1,7 @@
+Flask
+python-dotenv
+Flask-SQLAlchemy
+PyMySQL
+ping3
+sqlalchemy
+python-dotenv
