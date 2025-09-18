@@ -415,3 +415,57 @@ def rebuild_today_csv():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@ping_bp.route('/ping/summary/offline', methods=['GET'])
+def get_offline_summary():
+    """
+    Get a summary of offline devices.
+    Provides total, online, and offline counts, and a list of offline devices.
+    """
+    try:
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+
+        # Get all results from the most recent CSV data
+        all_results = service.get_latest_ping_results_from_csv()
+
+        if not all_results:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'total_devices': 0,
+                    'online_devices': 0,
+                    'offline_devices': 0,
+                    'offline_device_list': []
+                },
+                'message': 'No ping data available yet.'
+            })
+
+        # Calculate summary statistics
+        total_devices = len(all_results)
+        offline_device_list = [
+            device for device in all_results if device.get('ping_success') == 'False'
+        ]
+        offline_devices_count = len(offline_device_list)
+        online_devices_count = total_devices - offline_devices_count
+
+        summary = {
+            'total_devices': total_devices,
+            'online_devices': online_devices_count,
+            'offline_devices': offline_devices_count,
+            'offline_device_list': offline_device_list
+        }
+
+        return jsonify({
+            'success': True,
+            'data': summary
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
