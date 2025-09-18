@@ -18,7 +18,7 @@ Sistem monitoring ping untuk perangkat inventaris yang mengambil data dari datab
 1. **Clone repository dan masuk ke direktori**
 
 ```bash
-cd "d:\Kuliah\Magang Pelindo\project\Ping"
+cd "Ping"
 ```
 
 2. **Install dependencies**
@@ -37,14 +37,14 @@ Edit file `.env` sesuai dengan konfigurasi database Anda:
 
 ```env
 DB_CONNECTION=mysql+pymysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=kaido_kit
-DB_USERNAME=root
-DB_PASSWORD=your_password
+DB_HOST=
+DB_PORT=
+DB_DATABASE=
+DB_USERNAME=
+DB_PASSWORD=
 
-# Multi-Ping Configuration
-USE_MULTI_PING=true
+# Multi-Ping Configuration (Example)
+USE_MULTI_PING=true 
 MAX_PING_WORKERS=20
 PING_TIMEOUT=3
 ```

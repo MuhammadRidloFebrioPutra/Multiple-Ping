@@ -15,7 +15,6 @@ class Inventaris(db.Model):
     barang_id = db.Column(db.BigInteger)  # Foreign key to barangs table
     jenis_barang_id = db.Column(db.BigInteger, nullable=False)  # Foreign key to jenis_barangs table
     os = db.Column(db.String(255))
-    user = db.Column(db.String(255))
     merk = db.Column(db.String(255))
     id_lokasi = db.Column(db.BigInteger, nullable=False, index=True)  # Foreign key to lokasi_barangs table
     kondisi = db.Column(db.Enum('baik', 'maintenance', 'hilang'), nullable=False, default='baik', index=True)
@@ -40,7 +39,6 @@ class Inventaris(db.Model):
             'barang_id': self.barang_id,
             'jenis_barang_id': self.jenis_barang_id,
             'os': self.os,
-            'user': self.user,
             'merk': self.merk,
             'id_lokasi': self.id_lokasi,
             'kondisi': self.kondisi,

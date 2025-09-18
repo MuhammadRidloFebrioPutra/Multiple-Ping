@@ -150,3 +150,4 @@ instance/
 # Logs
 logs/
 *.log
+ping_results/
