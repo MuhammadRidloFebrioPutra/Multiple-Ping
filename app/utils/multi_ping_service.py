@@ -9,6 +9,7 @@ from app.models.inventaris import Inventaris
 from app.utils.database_monitor import DatabaseMonitor
 from app.utils.csv_manager import CSVManager
 from app.utils.ping_executor import PingExecutor
+from app.utils.timeout_tracker import TimeoutTracker
 
 # Enable PyMySQL compatibility with MySQLdb
 pymysql.install_as_MySQLdb()
@@ -31,10 +32,22 @@ class MultiPingService:
         self.csv_manager = CSVManager(config)
         self.ping_executor = PingExecutor(config)
         
+        # Initialize timeout tracker if enabled
+        self.timeout_tracker = None
+        if getattr(config, 'ENABLE_TIMEOUT_TRACKING', True):
+            self.timeout_tracker = TimeoutTracker(config)
+            logger.info("Timeout tracking enabled")
+        
+        # Add ping cycle control to prevent double pings
+        self._last_ping_time = 0
+        self._min_ping_interval = 2  # Minimum 2 seconds between ping cycles
+        self._ping_in_progress = False
+        
         logger.info("Multi-ping service initialized with modular components")
         logger.info(f"Database monitoring: Every {self.database_monitor.device_check_interval}s")
         logger.info(f"Ping execution: {self.ping_executor.max_workers} workers, {self.ping_executor.ping_timeout}s timeout")
         logger.info(f"CSV output: {self.csv_manager.csv_dir}")
+        logger.info(f"Ping cycle control: Minimum {self._min_ping_interval}s interval between cycles")
     
     def ping_single_device(self, device: Inventaris) -> Dict:
         """
@@ -42,12 +55,29 @@ class MultiPingService:
         """
         return self.ping_executor.ping_single_device(device)
     
-    def perform_ping_cycle(self):
+    def perform_ping_cycle(self, force: bool = False):
         """
         Perform one complete ping cycle for all devices using concurrent execution
+        Args:
+            force: Force ping even if minimum interval hasn't passed
         """
+        current_time = time.time()
+        
+        # Check if minimum interval has passed (prevent double pings)
+        if not force and (current_time - self._last_ping_time) < self._min_ping_interval:
+            logger.debug(f"Skipping ping cycle - minimum interval not reached ({current_time - self._last_ping_time:.1f}s < {self._min_ping_interval}s)")
+            return
+        
+        # Check if ping is already in progress
+        if self._ping_in_progress:
+            logger.warning("Ping cycle already in progress, skipping duplicate request")
+            return
+        
         try:
-            # Get devices from database
+            self._ping_in_progress = True
+            self._last_ping_time = current_time
+            
+            # Get devices from database (use cached if available)
             devices = self.database_monitor.get_devices_from_database()
             
             if not devices:
@@ -71,6 +101,16 @@ class MultiPingService:
                 # Write results to CSV with pruning using current active IPs
                 self.csv_manager.write_ping_results_to_csv(results, active_ips=active_ips)
                 
+                # Update timeout tracking if enabled
+                if self.timeout_tracker:
+                    self.timeout_tracker.update_timeout_tracking(results)
+                    
+                    # Log timeout summary
+                    timeout_summary = self.timeout_tracker.get_timeout_summary()
+                    if timeout_summary.get('total_timeout_devices', 0) > 0:
+                        logger.info(f"Timeout tracking: {timeout_summary['total_timeout_devices']} devices timing out, "
+                                  f"max consecutive: {timeout_summary['max_consecutive_timeouts']}")
+                
                 cycle_duration = time.time() - cycle_start
                 logger.debug(f"Complete ping cycle duration: {cycle_duration:.2f}s")
             else:
@@ -78,6 +118,8 @@ class MultiPingService:
                 
         except Exception as e:
             logger.error(f"Error in ping cycle: {e}")
+        finally:
+            self._ping_in_progress = False
     
     def _monitoring_loop(self):
         """
@@ -94,13 +136,13 @@ class MultiPingService:
             try:
                 start_time = time.time()
                 
-                # Check untuk database changes
+                # Check untuk database changes (don't trigger ping here)
                 if self.database_monitor.check_database_changes():
                     logger.info("Database changes detected, reloading device list...")
                     device_count = self.database_monitor.reload_device_list()
                     logger.info(f"Successfully reloaded {device_count} devices from database")
                 
-                # Perform ping cycle
+                # Perform ping cycle (with built-in duplicate prevention)
                 self.perform_ping_cycle()
                 
                 # Calculate how long the cycle took
@@ -184,15 +226,41 @@ class MultiPingService:
         """
         return self.ping_executor.get_ping_statistics(results)
     
+    def get_timeout_summary(self) -> Dict:
+        """Get timeout tracking summary (delegate to timeout tracker)"""
+        if self.timeout_tracker:
+            return self.timeout_tracker.get_timeout_summary()
+        return {'timeout_tracking_disabled': True}
+    
+    def get_timeout_devices(self, min_consecutive: int = 1) -> List[Dict]:
+        """Get devices with timeouts (delegate to timeout tracker)"""
+        if self.timeout_tracker:
+            return self.timeout_tracker.get_timeout_devices(min_consecutive)
+        return []
+    
+    def get_critical_timeouts(self, threshold: int = None) -> List[Dict]:
+        """Get critical timeout devices (delegate to timeout tracker)"""
+        if self.timeout_tracker:
+            if threshold is None:
+                threshold = getattr(self.config, 'TIMEOUT_CRITICAL_THRESHOLD', 5)
+            return self.timeout_tracker.get_critical_timeouts(threshold)
+        return []
+    
     def get_service_status(self) -> Dict:
         """
         Get comprehensive service status
         """
         try:
-            return {
+            status = {
                 'service_running': self.running,
-                'service_type': 'Multi-Ping Service (Modular)',
+                'service_type': 'Multi-Ping Service (Optimized + Timeout Tracking)',
                 'ping_interval_seconds': self.config.PING_INTERVAL,
+                'ping_cycle_control': {
+                    'minimum_interval_seconds': self._min_ping_interval,
+                    'ping_in_progress': self._ping_in_progress,
+                    'last_ping_time': self._last_ping_time,
+                    'duplicate_prevention': True
+                },
                 'components': {
                     'database_monitor': self.database_monitor.get_monitoring_status(),
                     'csv_manager': self.csv_manager.get_csv_statistics(),
@@ -201,6 +269,20 @@ class MultiPingService:
                 'device_count': self.get_device_count(),
                 'csv_output_directory': self.csv_manager.csv_dir
             }
+            
+            # Add timeout tracking status if enabled
+            if self.timeout_tracker:
+                timeout_summary = self.get_timeout_summary()
+                status['timeout_tracking'] = {
+                    'enabled': True,
+                    'csv_file': timeout_summary.get('timeout_csv_path', ''),
+                    'summary': timeout_summary
+                }
+            else:
+                status['timeout_tracking'] = {'enabled': False}
+            
+            return status
+            
         except Exception as e:
             logger.error(f"Error getting service status: {e}")
             return {

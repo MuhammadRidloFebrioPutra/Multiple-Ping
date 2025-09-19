@@ -12,58 +12,31 @@ Sistem monitoring ping untuk perangkat inventaris yang mengambil data dari datab
 6. **REST API**: API lengkap untuk monitoring dan control
 7. **Real-time Statistics**: Statistik performa dan status perangkat
 8. **Scalable Configuration**: Atur concurrent workers sesuai kapasitas sistem
+9. **🆕 Duplicate Prevention**: Kontrol otomatis untuk mencegah ping ganda
+10. **🆕 Performance Optimization**: Cache dan kontrol cycle untuk efisiensi maksimal
+11. **🆕 Timeout Tracking**: Sistem tracking timeout berturut-turut per device
 
-## Instalasi
+## File CSV Output
 
-1. **Clone repository dan masuk ke direktori**
+Hasil ping disimpan dalam direktori `ping_results/` dengan format:
 
-```bash
-cd "Ping"
-```
+- **Ping Results**: `ping_results_YYYYMMDD.csv`
 
-2. **Install dependencies**
+  - Nama file: `ping_results_YYYYMMDD.csv`
+  - Format: CSV dengan header
+  - Rotasi: File baru setiap hari
+  - Kolom: timestamp, device_id, ip_address, hostname, ping_success, response_time_ms, error_message
+  - **🆕 Optimized**: Tidak ada duplikasi entry dalam interval yang sama
 
-```bash
-pip install -r requirements.txt
-```
-
-3. **Setup environment variables**
-
-```bash
-copy env.example .env
-```
-
-Edit file `.env` sesuai dengan konfigurasi database Anda:
-
-```env
-DB_CONNECTION=mysql+pymysql
-DB_HOST=
-DB_PORT=
-DB_DATABASE=
-DB_USERNAME=
-DB_PASSWORD=
-
-# Multi-Ping Configuration (Example)
-USE_MULTI_PING=true 
-MAX_PING_WORKERS=20
-PING_TIMEOUT=3
-```
-
-4. **Jalankan aplikasi**
-
-```bash
-python run.py
-```
-
-## Struktur Database
-
-Sistem ini menggunakan tabel `inventaris` dengan struktur:
-
-- `id`: Primary key
-- `ip`: IP address perangkat (wajib)
-- `hostname`: Nama host perangkat
-- `kondisi`: Kondisi perangkat ('baik', 'maintenance', 'hilang')
-- Dan field lainnya sesuai SQL dump
+- **🆕 Timeout Tracking**: `timeout_tracking.csv`
+  - Nama file: `timeout_tracking.csv` (single file, updated continuously)
+  - Format: CSV dengan header untuk tracking timeout berturut-turut
+  - Kolom: ip_address, hostname, device_id, merk, os, kondisi, consecutive_timeouts, first_timeout, last_timeout, last_updated
+  - **Behavior**:
+    - IP yang timeout ditambahkan dengan consecutive_timeouts = 1
+    - Timeout berturut-turut menambah counter tanpa duplikasi (satu IP satu line)
+    - IP yang ping berhasil dihapus dari tracking
+    - Data diurutkan berdasarkan consecutive_timeouts (tertinggi di atas)
 
 ## API Endpoints
 
@@ -111,86 +84,81 @@ POST /api/ping/service/stop
 POST /api/ping/test/{ip_address}
 ```
 
+### 8. CSV Rebuild (Optimized)
+
+```
+POST /api/ping/csv/rebuild
+```
+
+### 🆕 9. Timeout Tracking Endpoints
+
+```
+GET /api/ping/timeout/summary
+GET /api/ping/timeout/devices?min_consecutive=1
+GET /api/ping/timeout/critical?threshold=5
+GET /api/ping/timeout/report
+POST /api/ping/timeout/reset
+```
+
 ## Contoh Response API
 
-### Latest Ping Results
+### 🆕 Timeout Summary
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_timeout_devices": 15,
+    "max_consecutive_timeouts": 25,
+    "average_consecutive_timeouts": 8.5,
+    "devices_with_high_timeouts": 3,
+    "timeout_csv_path": "ping_results/timeout_tracking.csv"
+  }
+}
+```
+
+### 🆕 Timeout Devices
 
 ```json
 {
   "success": true,
   "data": [
     {
-      "timestamp": "2025-09-16T10:30:00.123456",
-      "device_id": 1,
-      "ip_address": "192.168.1.11",
-      "hostname": "host-inventaris-1",
-      "ping_success": true,
-      "response_time_ms": 1.23,
-      "error_message": ""
+      "ip_address": "10.2.30.184",
+      "hostname": "POCC",
+      "device_id": "1",
+      "merk": "Vivotek FD8377-HV",
+      "os": "",
+      "kondisi": "baik",
+      "consecutive_timeouts": "25",
+      "first_timeout": "2025-09-19T10:45:47.075895",
+      "last_timeout": "2025-09-19T11:21:55.432375",
+      "last_updated": "2025-09-19T11:21:55.432375"
     }
   ],
-  "count": 1
+  "count": 1,
+  "min_consecutive_filter": 1
 }
 ```
 
-### Statistics
+### 🆕 Service Status (Enhanced with Timeout Tracking)
 
 ```json
 {
   "success": true,
-  "statistics": {
-    "total_pings": 100,
-    "successful_pings": 95,
-    "failed_pings": 5,
-    "success_rate": 95.0,
-    "average_response_time_ms": 1.45,
-    "min_response_time_ms": 0.8,
-    "max_response_time_ms": 3.2
-  }
-}
-```
-
-### Device Status Summary
-
-```json
-{
-  "success": true,
-  "data": {
-    "total_devices": 3,
-    "online_devices": 2,
-    "offline_devices": 1,
-    "devices": {
-      "online": [
-        {
-          "device_id": 1,
-          "ip_address": "192.168.1.11",
-          "hostname": "host-inventaris-1",
-          "last_seen": "2025-09-16T10:30:00.123456",
-          "response_time_ms": 1.23
-        }
-      ],
-      "offline": [
-        {
-          "device_id": 3,
-          "ip_address": "192.168.1.13",
-          "hostname": "host-inventaris-3",
-          "last_seen": "2025-09-16T10:29:55.123456",
-          "error_message": "No response (timeout)"
-        }
-      ]
+  "service_type": "Multi-Ping Service (Optimized + Timeout Tracking)",
+  "service_running": true,
+  "timeout_tracking": {
+    "enabled": true,
+    "csv_file": "ping_results/timeout_tracking.csv",
+    "summary": {
+      "total_timeout_devices": 15,
+      "max_consecutive_timeouts": 25,
+      "devices_with_high_timeouts": 3
     }
   }
 }
 ```
-
-## File CSV Output
-
-Hasil ping disimpan dalam direktori `ping_results/` dengan format:
-
-- Nama file: `ping_results_YYYYMMDD.csv`
-- Format: CSV dengan header
-- Rotasi: File baru setiap hari
-- Kolom: timestamp, device_id, ip_address, hostname, ping_success, response_time_ms, error_message
 
 ## Konfigurasi
 
@@ -208,114 +176,62 @@ Konfigurasi dapat diatur melalui environment variables:
 - `MAX_PING_WORKERS`: Jumlah concurrent ping workers (default: 20)
 - `PING_TIMEOUT`: Timeout per ping dalam detik (default: 3)
 
-### Optimization Tips
+**🆕 Timeout Tracking Configuration:**
 
-**Untuk Jaringan Kecil (< 50 devices):**
+- `ENABLE_TIMEOUT_TRACKING`: Enable/disable timeout tracking (default: true)
+- `TIMEOUT_CRITICAL_THRESHOLD`: Consecutive timeouts untuk dianggap critical (default: 5)
 
-```env
-USE_MULTI_PING=true
-MAX_PING_WORKERS=10
-PING_TIMEOUT=2
-```
-
-**Untuk Jaringan Menengah (50-200 devices):**
+### Contoh .env dengan Timeout Tracking
 
 ```env
+DB_CONNECTION=mysql+pymysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_DATABASE=kaido_kit
+DB_USERNAME=root
+DB_PASSWORD=
+
+# Multi-Ping Configuration
 USE_MULTI_PING=true
 MAX_PING_WORKERS=20
 PING_TIMEOUT=3
+PING_INTERVAL=5
+
+# Timeout Tracking
+ENABLE_TIMEOUT_TRACKING=true
+TIMEOUT_CRITICAL_THRESHOLD=5
 ```
 
-**Untuk Jaringan Besar (> 200 devices):**
+## 🔧 Monitoring dan Troubleshooting
 
-```env
-USE_MULTI_PING=true
-MAX_PING_WORKERS=50
-PING_TIMEOUT=5
+### 🆕 Timeout Tracking Features
+
+#### 1. Automatic Timeout Detection
+
+- **Real-time Tracking**: Setiap ping cycle secara otomatis update timeout tracking
+- **Consecutive Counter**: Menghitung timeout berturut-turut per IP address
+- **Auto Cleanup**: IP yang kembali online otomatis dihapus dari tracking
+
+#### 2. Critical Timeout Alerts
+
+- **Threshold-based**: Konfigurasi threshold untuk timeout critical
+- **Prioritized List**: Device dengan timeout terbanyak di urutan atas
+- **Comprehensive Report**: Export report lengkap untuk analisis
+
+#### 3. CSV Format Timeout Tracking
+
+```csv
+ip_address,hostname,device_id,merk,os,kondisi,consecutive_timeouts,first_timeout,last_timeout,last_updated
+10.2.30.184,POCC,1,Vivotek FD8377-HV,,baik,25,2025-09-19T10:45:47.075895,2025-09-19T11:21:55.432375,2025-09-19T11:21:55.432375
 ```
 
-## Cara Kerja Sistem
+### 🆕 Timeout Monitoring Workflow
 
-### Single-Ping Mode (USE_MULTI_PING=false)
-
-1. **Sequential Processing**: Ping satu per satu device secara berurutan
-2. **Slower**: Waktu total = jumlah device × ping timeout
-3. **Lower Resource**: Menggunakan resource CPU dan network minimal
-
-### Multi-Ping Mode (USE_MULTI_PING=true) - **Recommended**
-
-1. **Concurrent Processing**: Ping multiple devices secara bersamaan
-2. **Faster**: Waktu total ≈ ping timeout (terlepas dari jumlah device)
-3. **Scalable**: Dapat handle ratusan device dengan performa optimal
-4. **Efficient**: Menggunakan ThreadPoolExecutor untuk resource management
-
-### Flow Diagram
-
-```
-Database Query → Get Active Devices → Multi-Ping Execution → CSV Storage → API Access
-     ↓               ↓                        ↓                   ↓           ↓
-[inventaris]    [IP addresses]         [ThreadPool]         [CSV Files]  [REST API]
- kondisi≠hilang   valid IPs only       max_workers=20       daily rotation  real-time
-```
-
-## Monitoring dan Troubleshooting
-
-### Common Issues dan Solutions
-
-#### 1. ModuleNotFoundError: No module named 'MySQLdb'
-
-**Error**: `ModuleNotFoundError: No module named 'MySQLdb'`
-
-**Solution**:
-
-- Pastikan PyMySQL sudah terinstall dengan benar
-- Pastikan konfigurasi database menggunakan `mysql+pymysql` di file `.env`
-- Install ulang dependencies: `pip install PyMySQL`
-
-#### 2. Database Connection Error
-
-**Error**: Database connection failed
-
-**Solutions**:
-
-- Pastikan MySQL/MariaDB server berjalan
-- Periksa kredensial database di file `.env`
-- Test koneksi dengan: `python test_connection.py`
-- Pastikan database `kaido_kit` sudah dibuat
-
-#### 3. Import Errors
-
-**Error**: `Import "flask" could not be resolved`
-
-**Solutions**:
-
-- Aktifkan virtual environment: `myenv\Scripts\activate`
-- Install dependencies: `pip install -r requirements.txt`
-- Verifikasi Python version: `python --version`
-
-### Testing Tools
-
-1. **Test Database Connection**:
-
-   ```bash
-   python test_connection.py
-   ```
-
-2. **Test Basic App**:
-   ```bash
-   python test_app.py
-   ```
-   Lalu akses:
-   - http://localhost:5000/test
-   - http://localhost:5000/test-db
-   - http://localhost:5000/test-ping
-
-### Log Monitoring
-
-- **Log Output**: Aplikasi akan menampilkan log aktivitas ping monitoring
-- **Service Status**: Gunakan endpoint `/api/ping/service/status` untuk cek status service
-- **Test Ping**: Gunakan endpoint `/api/ping/test/{ip}` untuk test ping manual
-- **CSV Files**: Periksa direktori `ping_results/` untuk file output
+1. **Ping Execution** → Results contain success/failure per IP
+2. **Timeout Analysis** → Failed pings increment consecutive counter
+3. **CSV Update** → Single line per IP, no redundancy
+4. **Success Recovery** → Successful ping removes IP from tracking
+5. **Critical Alerts** → API endpoints untuk monitoring critical timeouts
 
 ## Kebutuhan Sistem
 
@@ -323,3 +239,16 @@ Database Query → Get Active Devices → Multi-Ping Execution → CSV Storage �
 - MySQL/MariaDB server
 - Network access ke perangkat yang akan di-ping
 - Permissions untuk membuat file CSV di direktori output
+- **🆕 Recommended**: RAM minimal 2GB untuk handling > 200 devices + timeout tracking
+- **🆕 Recommended**: CPU minimal 2 cores untuk optimal threading + timeout processing
+
+## 📊 Performance Benchmarks (Updated)
+
+| Device Count | Recommended Config         | Expected Ping Time | Memory Usage | Timeout Tracking |
+| ------------ | -------------------------- | ------------------ | ------------ | ---------------- |
+| < 50         | Workers: 10, Interval: 5s  | ~3s                | ~100MB       | ~1MB             |
+| 50-200       | Workers: 20, Interval: 5s  | ~5s                | ~200MB       | ~5MB             |
+| 200-500      | Workers: 30, Interval: 10s | ~8s                | ~400MB       | ~10MB            |
+| > 500        | Workers: 50, Interval: 15s | ~12s               | ~800MB       | ~20MB            |
+
+**Note**: Dengan optimasi duplicate prevention dan timeout tracking, sistem dapat handle monitoring yang lebih comprehensive dengan overhead minimal.

@@ -32,6 +32,10 @@ class Config:
     MAX_PING_WORKERS = int(os.getenv('MAX_PING_WORKERS', '20'))  # Max concurrent ping threads
     PING_TIMEOUT = int(os.getenv('PING_TIMEOUT', '3'))  # Ping timeout in seconds
     
+    # Timeout tracking configuration
+    ENABLE_TIMEOUT_TRACKING = os.getenv('ENABLE_TIMEOUT_TRACKING', 'true').lower() == 'true'
+    TIMEOUT_CRITICAL_THRESHOLD = int(os.getenv('TIMEOUT_CRITICAL_THRESHOLD', '5'))  # Critical consecutive timeouts
+    
     # Database monitoring configuration
     DEVICE_CHECK_INTERVAL = int(os.getenv('DEVICE_CHECK_INTERVAL', '30'))  # Check database every 30 seconds
     
