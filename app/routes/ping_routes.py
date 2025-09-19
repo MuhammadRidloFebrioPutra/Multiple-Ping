@@ -480,3 +480,152 @@ def get_offline_summary():
             'success': False,
             'error': str(e)
         }), 500
+
+@ping_bp.route('/ping/timeout/summary', methods=['GET'])
+def get_timeout_summary():
+    """
+    Get timeout tracking summary
+    """
+    try:
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        summary = service.get_timeout_summary()
+        
+        return jsonify({
+            'success': True,
+            'data': summary
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ping_bp.route('/ping/timeout/devices', methods=['GET'])
+def get_timeout_devices():
+    """
+    Get devices with consecutive timeouts
+    Query parameters:
+    - min_consecutive: minimum consecutive timeouts (default: 1)
+    """
+    try:
+        min_consecutive = request.args.get('min_consecutive', 1, type=int)
+        
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        timeout_devices = service.get_timeout_devices(min_consecutive)
+        
+        return jsonify({
+            'success': True,
+            'data': timeout_devices,
+            'count': len(timeout_devices),
+            'min_consecutive_filter': min_consecutive
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ping_bp.route('/ping/timeout/critical', methods=['GET'])
+def get_critical_timeouts():
+    """
+    Get devices with critical timeout counts
+    Query parameters:
+    - threshold: critical timeout threshold (default: from config)
+    """
+    try:
+        threshold = request.args.get('threshold', type=int)
+        
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        critical_devices = service.get_critical_timeouts(threshold)
+        
+        return jsonify({
+            'success': True,
+            'data': critical_devices,
+            'count': len(critical_devices),
+            'threshold': threshold or getattr(service.config, 'TIMEOUT_CRITICAL_THRESHOLD', 5)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ping_bp.route('/ping/timeout/report', methods=['GET'])
+def get_timeout_report():
+    """
+    Get comprehensive timeout tracking report
+    """
+    try:
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        if not service.timeout_tracker:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout tracking is disabled'
+            }), 503
+        
+        report = service.timeout_tracker.export_timeout_report()
+        
+        return jsonify({
+            'success': True,
+            'data': report
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ping_bp.route('/ping/timeout/reset', methods=['POST'])
+def reset_timeout_tracking():
+    """
+    Reset timeout tracking (clear CSV)
+    """
+    try:
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        if not service.timeout_tracker:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout tracking is disabled'
+            }), 503
+        
+        service.timeout_tracker.cleanup_timeout_csv()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Timeout tracking reset successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
