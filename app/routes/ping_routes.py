@@ -391,27 +391,38 @@ def force_database_reload():
 @ping_bp.route('/ping/csv/rebuild', methods=['POST'])
 def rebuild_today_csv():
     """
-    Rebuild today's CSV file from current active devices (fresh ping cycle forced)
+    Rebuild today's CSV file from current active devices (reuse existing cache to prevent double ping)
     """
     try:
         service = get_multi_ping_service()
         if not service:
             return jsonify({'success': False, 'error': 'Multi-ping service not available'}), 503
 
-        # Ambil devices terbaru
+        # Check if service is already running to avoid conflicts
+        if service._ping_in_progress:
+            return jsonify({
+                'success': False, 
+                'error': 'Ping cycle already in progress, please wait and try again'
+            }), 409
+
+        # Use existing cached devices first, then reload if needed
         devices = service.database_monitor.get_devices_from_database()
+        if not devices:
+            # Force reload if no devices cached
+            service.database_monitor.reload_device_list()
+            devices = service.database_monitor.get_devices_from_database()
+            
         if not devices:
             return jsonify({'success': False, 'error': 'No active devices found'}), 404
 
-        # Lakukan ping sekali (synchronous)
-        results = service.ping_executor.ping_devices_concurrent(devices)
-        active_ips = [d.ip for d in devices if d.ip]
-        service.csv_manager.write_ping_results_to_csv(results, active_ips=active_ips)
+        # Force one ping cycle (this will check for duplicates internally)
+        service.perform_ping_cycle(force=True)
 
         return jsonify({
             'success': True,
-            'message': 'CSV rebuilt successfully from current database state',
-            'device_count': len(results)
+            'message': 'CSV rebuild initiated successfully from cached database state',
+            'device_count': len(devices),
+            'note': 'Duplicate ping prevention active'
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -56,12 +56,20 @@ def main():
             
             if len(active_result) > 1:
                 print(f"\n💡 Database has {len(active_result)} active devices")
-                print(f"   But CSV only shows 1 device being pinged")
-                print(f"   This suggests an issue with the ping service query")
+                print(f"   Check CSV to see if ping duplication occurs")
+                print(f"   Expected: {len(active_result)} pings per cycle")
+                print(f"   If seeing double entries, ping optimization needed")
             elif len(active_result) == 1:
                 print(f"\n✅ Only 1 active device found - this matches CSV results")
             else:
                 print(f"\n⚠️  No active devices found in database")
+                
+            # Add performance warning
+            if len(active_result) > 100:
+                print(f"\n⚠️  Performance Warning:")
+                print(f"   {len(active_result)} devices is quite large")
+                print(f"   Consider optimizing ping intervals and worker count")
+                print(f"   Recommended: PING_INTERVAL=10, MAX_PING_WORKERS=30")
                 
     except Exception as e:
         print(f"❌ Error: {e}")

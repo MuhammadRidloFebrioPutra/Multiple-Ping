@@ -31,10 +31,16 @@ class MultiPingService:
         self.csv_manager = CSVManager(config)
         self.ping_executor = PingExecutor(config)
         
+        # Add ping cycle control to prevent double pings
+        self._last_ping_time = 0
+        self._min_ping_interval = 2  # Minimum 2 seconds between ping cycles
+        self._ping_in_progress = False
+        
         logger.info("Multi-ping service initialized with modular components")
         logger.info(f"Database monitoring: Every {self.database_monitor.device_check_interval}s")
         logger.info(f"Ping execution: {self.ping_executor.max_workers} workers, {self.ping_executor.ping_timeout}s timeout")
         logger.info(f"CSV output: {self.csv_manager.csv_dir}")
+        logger.info(f"Ping cycle control: Minimum {self._min_ping_interval}s interval between cycles")
     
     def ping_single_device(self, device: Inventaris) -> Dict:
         """
@@ -42,12 +48,29 @@ class MultiPingService:
         """
         return self.ping_executor.ping_single_device(device)
     
-    def perform_ping_cycle(self):
+    def perform_ping_cycle(self, force: bool = False):
         """
         Perform one complete ping cycle for all devices using concurrent execution
+        Args:
+            force: Force ping even if minimum interval hasn't passed
         """
+        current_time = time.time()
+        
+        # Check if minimum interval has passed (prevent double pings)
+        if not force and (current_time - self._last_ping_time) < self._min_ping_interval:
+            logger.debug(f"Skipping ping cycle - minimum interval not reached ({current_time - self._last_ping_time:.1f}s < {self._min_ping_interval}s)")
+            return
+        
+        # Check if ping is already in progress
+        if self._ping_in_progress:
+            logger.warning("Ping cycle already in progress, skipping duplicate request")
+            return
+        
         try:
-            # Get devices from database
+            self._ping_in_progress = True
+            self._last_ping_time = current_time
+            
+            # Get devices from database (use cached if available)
             devices = self.database_monitor.get_devices_from_database()
             
             if not devices:
@@ -78,6 +101,8 @@ class MultiPingService:
                 
         except Exception as e:
             logger.error(f"Error in ping cycle: {e}")
+        finally:
+            self._ping_in_progress = False
     
     def _monitoring_loop(self):
         """
@@ -94,13 +119,13 @@ class MultiPingService:
             try:
                 start_time = time.time()
                 
-                # Check untuk database changes
+                # Check untuk database changes (don't trigger ping here)
                 if self.database_monitor.check_database_changes():
                     logger.info("Database changes detected, reloading device list...")
                     device_count = self.database_monitor.reload_device_list()
                     logger.info(f"Successfully reloaded {device_count} devices from database")
                 
-                # Perform ping cycle
+                # Perform ping cycle (with built-in duplicate prevention)
                 self.perform_ping_cycle()
                 
                 # Calculate how long the cycle took
@@ -191,8 +216,14 @@ class MultiPingService:
         try:
             return {
                 'service_running': self.running,
-                'service_type': 'Multi-Ping Service (Modular)',
+                'service_type': 'Multi-Ping Service (Optimized)',
                 'ping_interval_seconds': self.config.PING_INTERVAL,
+                'ping_cycle_control': {
+                    'minimum_interval_seconds': self._min_ping_interval,
+                    'ping_in_progress': self._ping_in_progress,
+                    'last_ping_time': self._last_ping_time,
+                    'duplicate_prevention': True
+                },
                 'components': {
                     'database_monitor': self.database_monitor.get_monitoring_status(),
                     'csv_manager': self.csv_manager.get_csv_statistics(),

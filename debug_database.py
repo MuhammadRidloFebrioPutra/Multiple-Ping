@@ -102,13 +102,17 @@ def main():
             if config.USE_MULTI_PING:
                 from app.utils.multi_ping_service import MultiPingService
                 service = MultiPingService(config)
-                print("Using Multi-Ping Service")
+                print("Using Multi-Ping Service (Optimized)")
+                
+                # Check for duplicate prevention features
+                print(f"Duplicate prevention enabled: {hasattr(service, '_ping_in_progress')}")
+                print(f"Minimum ping interval: {getattr(service, '_min_ping_interval', 'Not set')}s")
             else:
                 from app.utils.ping_service import PingMonitoringService
                 service = PingMonitoringService(config)
                 print("Using Single-Ping Service")
             
-            devices = service.get_devices_from_database()
+            devices = service.database_monitor.get_devices_from_database()
             print(f"Devices returned by ping service: {len(devices)}")
             
             print(f"\n📋 Devices from ping service:")
