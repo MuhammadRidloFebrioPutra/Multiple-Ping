@@ -100,6 +100,13 @@ GET /api/ping/timeout/report
 POST /api/ping/timeout/reset
 ```
 
+### 🆕 10. WhatsApp Timeout Alert Endpoints
+
+```
+GET /api/ping/timeout/whatsapp/summary
+POST /api/ping/timeout/whatsapp/test?ip_address=10.2.30.184
+```
+
 ## Contoh Response API
 
 ### 🆕 Timeout Summary
@@ -160,6 +167,19 @@ POST /api/ping/timeout/reset
 }
 ```
 
+### 🆕 WhatsApp Alert Summary
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_alerts_sent": 10,
+    "devices_alerted": 7,
+    "critical_timeouts_detected": 3
+  }
+}
+```
+
 ## Konfigurasi
 
 Konfigurasi dapat diatur melalui environment variables:
@@ -181,7 +201,13 @@ Konfigurasi dapat diatur melalui environment variables:
 - `ENABLE_TIMEOUT_TRACKING`: Enable/disable timeout tracking (default: true)
 - `TIMEOUT_CRITICAL_THRESHOLD`: Consecutive timeouts untuk dianggap critical (default: 5)
 
-### Contoh .env dengan Timeout Tracking
+**🆕 WhatsApp Timeout Alert Configuration:**
+
+- `ENABLE_WHATSAPP_TIMEOUT_ALERTS`: Enable/disable WhatsApp alerts for timeouts (default: true)
+- `WHATSAPP_TIMEOUT_THRESHOLD`: Consecutive timeouts before sending WhatsApp alert (default: 20)
+- `WHATSAPP_COOLDOWN_MINUTES`: Cooldown period between alerts for same device (default: 60)
+
+### Contoh .env dengan Timeout Tracking dan WhatsApp Alerts
 
 ```env
 DB_CONNECTION=mysql+pymysql
@@ -200,6 +226,56 @@ PING_INTERVAL=5
 # Timeout Tracking
 ENABLE_TIMEOUT_TRACKING=true
 TIMEOUT_CRITICAL_THRESHOLD=5
+
+# WhatsApp Timeout Alerts
+ENABLE_WHATSAPP_TIMEOUT_ALERTS=true
+WHATSAPP_TIMEOUT_THRESHOLD=20
+WHATSAPP_COOLDOWN_MINUTES=60
+```
+
+## 🚨 WhatsApp Timeout Alert System
+
+### Features
+
+- **Automatic Alerts**: Mengirim WhatsApp alert otomatis ketika device mencapai 20 consecutive timeouts
+- **Smart Cooldown**: Mencegah spam dengan cooldown period 60 menit per device
+- **Rich Information**: Alert berisi detail lengkap device (IP, hostname, brand, etc.)
+- **Recovery Tracking**: Otomatis stop alert ketika device kembali online
+- **Alert History**: Track semua alert yang pernah dikirim
+
+### Alert Message Format
+
+```
+🚨 DEVICE TIMEOUT ALERT 🚨
+
+⚠️ CRITICAL: Device Tidak Dapat Dijangkau!
+
+📍 Device Information:
+• IP Address: 10.2.30.184
+• Hostname: POCC
+• Device ID: 1
+• Brand/Model: Vivotek FD8377-HV
+• Status: baik
+
+⏰ Timeout Details:
+• Consecutive Timeouts: 20
+• First Timeout: 26-09-2025 12:26:13
+• Last Check: 26-09-2025 12:54:48
+
+🔧 Action Required:
+1. Check device power and network connection
+2. Verify network connectivity to 10.2.30.184
+3. Physical inspection may be required
+4. Contact technical support if issue persists
+
+Alert Time: 26-09-2025 12:55:02 WIB
+```
+
+### 🆕 WhatsApp Timeout Alert Endpoints
+
+```
+GET /api/ping/timeout/whatsapp/summary    # Get WhatsApp alert summary
+POST /api/ping/timeout/whatsapp/test?ip_address=10.2.30.184    # Test alert for specific IP
 ```
 
 ## 🔧 Monitoring dan Troubleshooting
