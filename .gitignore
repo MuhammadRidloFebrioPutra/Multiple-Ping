@@ -151,3 +151,5 @@ instance/
 logs/
 *.log
 ping_results/
+
+chrome_profile
