@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import request, jsonify
 import time
 import random
 import numpy as np
@@ -15,11 +15,12 @@ import re
 import pyperclip
 import atexit
 import threading
+import csv
+from datetime import datetime
+from typing import Dict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-app = Flask(__name__)
 
 # Global WebDriver instance
 driver = None
@@ -53,31 +54,44 @@ def is_valid_phone_number(phone_number):
 def load_contacts(file_path, type_):
     contacts = []
     try:
+        # Make file path absolute if it's relative
+        if not os.path.isabs(file_path):
+            # Look in the project root directory
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            file_path = os.path.join(project_root, file_path)
+        
+        logging.info(f"Looking for contacts file at: {file_path}")
+        
         if not os.path.exists(file_path):
             logging.error(f"Contacts file {file_path} does not exist")
+            logging.info(f"Please create the file with format: 'target,message' per line")
             return []
+            
         with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
+            for line_num, line in enumerate(file, 1):
                 try:
                     line = line.strip()
-                    if not line:
+                    if not line or line.startswith('#'):  # Skip empty lines and comments
                         continue
                     parts = line.split(',', 1)
                     if len(parts) != 2:
-                        logging.error(f"Invalid line format in {file_path}: {line}")
+                        logging.error(f"Invalid line format in {file_path} at line {line_num}: {line}")
                         continue
                     target, message = [part.strip() for part in parts]
+                    if not target or not message:
+                        logging.error(f"Empty target or message in {file_path} at line {line_num}: {line}")
+                        continue
                     if type_ == 'contact' and not is_valid_phone_number(target):
-                        logging.warning(f"Invalid phone number format: {target}")
+                        logging.warning(f"Invalid phone number format at line {line_num}: {target}")
                         continue
                     contacts.append((target, message))
                     logging.info(f"Valid {type_} loaded: {target}")
                 except ValueError as e:
-                    logging.error(f"Invalid line format in {file_path}: {line} ({e})")
+                    logging.error(f"Invalid line format in {file_path} at line {line_num}: {line} ({e})")
         logging.info(f"Loaded {len(contacts)} valid entries from {file_path}")
         return contacts
     except Exception as e:
-        logging.error(f"Error loading contacts: {e}")
+        logging.error(f"Error loading contacts from {file_path}: {e}")
         return []
 
 # Function to simulate human-like typing
@@ -293,10 +307,47 @@ def send_whatsapp_messages(cctv_id, contacts_file, type_="group", method="comput
 
             results = []
             for target, base_message in contacts:
-                alert_message = """🚨 CCTV-1 ALERT 🚨
+                # Check if this is a timeout alert (contains TIMEOUT- prefix)
+                if cctv_id.startswith('TIMEOUT-'):
+                    # Parse timeout alert data
+                    parts = cctv_id.replace('TIMEOUT-', '').split('-', 1)
+                    device_id = parts[0] if len(parts) > 0 else 'Unknown'
+                    ip_address = parts[1] if len(parts) > 1 else 'Unknown'
+                    
+                    # Get device data from timeout tracking
+                    device_data = get_timeout_device_data(ip_address)
+                    
+                    alert_message = f"""🚨 DEVICE TIMEOUT ALERT 🚨
+
+⚠️ CRITICAL: Device Tidak Dapat Dijangkau!
+
+📍 Device Information:
+• IP Address: {device_data.get('ip_address', ip_address)}
+• Hostname: {device_data.get('hostname', 'Unknown')}
+• Device ID: {device_data.get('device_id', device_id)}
+• Brand/Model: {device_data.get('merk', 'Unknown')}
+• Status: {device_data.get('kondisi', 'Unknown')}
+
+⏰ Timeout Details:
+• Consecutive Timeouts: {device_data.get('consecutive_timeouts', 'Unknown')}
+• First Timeout: {format_datetime(device_data.get('first_timeout', 'Unknown'))}
+• Last Check: {format_datetime(device_data.get('last_timeout', 'Unknown'))}
+
+🔧 Action Required:
+1. Check device power and network connection
+2. Verify network connectivity to {ip_address}
+3. Physical inspection may be required
+4. Contact technical support if issue persists
+
+Alert Time: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')} WIB
+
+This is an automated alert from Pelindo Monitoring System."""
+                else:
+                    # Default sensor alert message
+                    alert_message = f"""🚨 CCTV-{cctv_id} ALERT 🚨
 
 Status: firing
-Open at: 2025-09-18 15:28:30 WIB
+Open at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB
 Close at: -
 Duration: -
 Annotations:
@@ -310,6 +361,7 @@ Annotations:
 
 summary :
 Sensor Detected : Anomaly Detected"""
+
                 logging.info(f"Processing {type_}: {target}")
                 for attempt in range(3):
                     try:
@@ -332,18 +384,16 @@ Sensor Detected : Anomaly Detected"""
                             human_typing(message_box, alert_message)
                         else:
                             paste_message(message_box, alert_message)
-                        # time.sleep(random.uniform(0.5, 1.5))
                         message_box.send_keys(Keys.ENTER)
                         logging.info(f"Message sent to {type_} {target} using {method} method")
                         results.append({"target": target, "status": "success"})
-                        # time.sleep(random.uniform(2, 5))
                         break
                     except Exception as e:
                         logging.error(f"Attempt {attempt + 1} failed for {type_} {target}: {e}")
                         if attempt == 2:
                             results.append({"target": target, "status": "failed", "error": str(e)})
 
-            return {"status": "success", "results": results}  # Removed save_session call
+            return {"status": "success", "results": results}
 
         except Exception as e:
             logging.error(f"An error occurred: {e}")
@@ -352,39 +402,43 @@ Sensor Detected : Anomaly Detected"""
         retry_count += 1
         if retry_count < max_retries:
             logging.info(f"Retrying program (attempt {retry_count + 1}/{max_retries})")
-            # time.sleep(random.uniform(5, 10))
 
     return {"status": "error", "message": f"Failed to avoid mobile redirect after {max_retries} attempts"}
 
-# Flask route for alert endpoint
-@app.route('/alert', methods=['GET'])
-def send_alert():
-    cctv_id = request.args.get('id')
-    if not cctv_id:
-        return jsonify({"status": "error", "message": "Missing cctv_id parameter"}), 400
+def get_timeout_device_data(ip_address: str) -> Dict:
+    """Get device data from timeout tracking CSV"""
+    try:
+        from config import Config
+        config = Config()
+        timeout_dir = getattr(config, 'CSV_OUTPUT_DIR', 'ping_results')
+        timeout_csv_path = os.path.join(timeout_dir, 'timeout_tracking.csv')
+        
+        if not os.path.exists(timeout_csv_path):
+            return {}
+        
+        with open(timeout_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if row['ip_address'] == ip_address:
+                    return dict(row)
+        
+        return {}
+    except Exception as e:
+        logging.error(f"Error getting timeout device data: {e}")
+        return {}
 
-    contacts_file = "contacts.txt"
-    profile_path = os.path.abspath("chrome_profile")
-    chrome_binary = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-    proxy = None
-
-    result = send_whatsapp_messages(
-        cctv_id=cctv_id,
-        contacts_file=contacts_file,
-        type_="group",
-        method="computer",
-        profile_path=profile_path,
-        proxy=proxy,
-        chrome_binary=chrome_binary
-    )
-    return jsonify(result)
+def format_datetime(datetime_str: str) -> str:
+    """Format datetime string for better readability"""
+    try:
+        if not datetime_str or datetime_str == 'Unknown':
+            return 'Unknown'
+        dt = datetime.fromisoformat(datetime_str)
+        return dt.strftime('%d-%m-%Y %H:%M:%S')
+    except:
+        return datetime_str
 
 # Start periodic session saving in a background thread
 def start_periodic_session_saver():
     session_thread = threading.Thread(target=periodic_save_session, daemon=True)
     session_thread.start()
     logging.info("Started periodic session saver thread")
-
-if __name__ == "__main__":
-    start_periodic_session_saver()
-    app.run(host='0.0.0.0', port=5000, debug=True)

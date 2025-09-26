@@ -1,0 +1,6 @@
+# WhatsApp Contacts/Groups
+# Format: target,message
+# For groups: use group name
+# For contacts: use phone number with country code (+628...)
+
+Kono wa tyu, Alert from monitoring system

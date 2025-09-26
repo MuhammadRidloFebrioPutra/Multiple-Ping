@@ -4,4 +4,10 @@ Flask-SQLAlchemy
 PyMySQL
 ping3
 sqlalchemy
-python-dotenv
+numpy
+selenium
+fake_useragent
+undetected_chromedriver
+setuptools
+webdriver_manager
+pyperclip

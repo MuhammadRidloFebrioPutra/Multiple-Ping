@@ -11,6 +11,8 @@ def create_app(config_class=Config):
     
     # Import and register blueprints
     from app.routes.ping_routes import ping_bp
+    from app.routes.whatsapp_routes import whatsapp_bp
     app.register_blueprint(ping_bp, url_prefix='/api')
+    app.register_blueprint(whatsapp_bp, url_prefix='/api')
     
     return app

@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request  # type: ignore
 from app.utils.multi_ping_service import get_multi_ping_service
 from config import Config
+from datetime import datetime
 
 ping_bp = Blueprint('ping', __name__)
 
@@ -624,6 +625,93 @@ def reset_timeout_tracking():
             'success': True,
             'message': 'Timeout tracking reset successfully'
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ping_bp.route('/ping/timeout/whatsapp/summary', methods=['GET'])
+def get_whatsapp_timeout_summary():
+    """
+    Get WhatsApp timeout alert summary
+    """
+    try:
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        if not service.timeout_tracker:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout tracking is disabled'
+            }), 503
+        
+        summary = service.timeout_tracker.get_whatsapp_alert_summary()
+        
+        return jsonify({
+            'success': True,
+            'data': summary
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ping_bp.route('/ping/timeout/whatsapp/test', methods=['POST'])
+def test_whatsapp_timeout_alert():
+    """
+    Test WhatsApp timeout alert for a specific IP
+    Query parameters:
+    - ip_address: IP address to test alert for
+    """
+    try:
+        ip_address = request.args.get('ip_address')
+        if not ip_address:
+            return jsonify({
+                'success': False,
+                'error': 'Missing ip_address parameter'
+            }), 400
+        
+        service = get_multi_ping_service()
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': 'Multi-ping service not available'
+            }), 503
+        
+        if not service.timeout_tracker:
+            return jsonify({
+                'success': False,
+                'error': 'Timeout tracking is disabled'
+            }), 503
+        
+        # Create test device data
+        test_device_data = {
+            'ip_address': ip_address,
+            'hostname': f'TEST-{ip_address}',
+            'device_id': '999',
+            'merk': 'Test Device',
+            'os': 'Test OS',
+            'kondisi': 'baik',
+            'consecutive_timeouts': '20',
+            'first_timeout': datetime.now().isoformat(),
+            'last_timeout': datetime.now().isoformat()
+        }
+        
+        # Send test alert
+        result = service.timeout_tracker._send_whatsapp_timeout_alert(test_device_data)
+        
+        return jsonify({
+            'success': result,
+            'message': 'Test WhatsApp timeout alert sent successfully' if result else 'Failed to send test alert',
+            'test_data': test_device_data
+        })
+        
     except Exception as e:
         return jsonify({
             'success': False,
