@@ -11,10 +11,18 @@ def create_app(config_class=Config):
     # Initialize database
     init_db(app)
     
-    # Import and register blueprints
-    from app.routes.ping_routes import ping_bp
+    # Import and register blueprints using absolute imports
+    from app.routes.ping_basic_routes import ping_basic_bp
+    from app.routes.ping_service_routes import ping_service_bp
+    from app.routes.ping_timeout_routes import ping_timeout_bp
+    from app.routes.ping_analytics_routes import ping_analytics_bp
     from app.routes.whatsapp_routes import whatsapp_bp
-    app.register_blueprint(ping_bp, url_prefix='/api')
+    
+    # Register all blueprints
+    app.register_blueprint(ping_basic_bp, url_prefix='/api')
+    app.register_blueprint(ping_service_bp, url_prefix='/api')
+    app.register_blueprint(ping_timeout_bp, url_prefix='/api')
+    app.register_blueprint(ping_analytics_bp, url_prefix='/api')
     app.register_blueprint(whatsapp_bp, url_prefix='/api')
     
     return app

@@ -21,7 +21,7 @@ class CSVManager:
         # CSV headers
         self.csv_headers = [
             'timestamp', 'device_id', 'ip_address', 'hostname', 
-            'ping_success', 'response_time_ms', 'error_message',
+            'ping_success', 'response_time_ms', 'latency_ms', 'error_message',
             'merk', 'os', 'kondisi', 'id_lokasi'
         ]
     
