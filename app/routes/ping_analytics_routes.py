@@ -13,7 +13,7 @@ def get_timeout_analytics_chart():
     Get timeout analytics data for line chart
     Query parameters:
     - hours: time range in hours (default: 24, max: 168 for 7 days)
-    - interval: data point interval in minutes (default: 15)
+    - interval: data point interval in minutes (default: 15, use 0 for all/raw data)
     """
     try:
         hours = request.args.get('hours', 24, type=int)
@@ -51,10 +51,18 @@ def get_timeout_analytics_chart():
                 }
             })
         
-        # Group data by interval for smoother chart
-        grouped_data = []
-        if interval > 0:
+        # If interval <= 0, return all raw data as chart_data
+        if not interval or interval <= 0:
+            grouped_data = [
+                {
+                    'time_label': datetime.fromisoformat(record['timestamp']).strftime('%Y-%m-%d %H:%M'),
+                    'timeout_count': record['total_timeout_devices'],
+                }
+                for record in analytics_data
+            ]
+        else:
             # Group data points by interval
+            grouped_data = []
             current_group = []
             current_interval_start = None
             
@@ -71,7 +79,8 @@ def get_timeout_analytics_chart():
                     # Process current group
                     if current_group:
                         avg_timeouts = sum(r['total_timeout_devices'] for r in current_group) / len(current_group)
-                        avg_critical = sum(r['critical_devices_count'] for r in current_group) / len(current_group)
+                        # Use .get for backward compatibility
+                        avg_critical = sum(r.get('critical_devices_count', 0) for r in current_group) / len(current_group)
                         grouped_data.append({
                             'timestamp': current_interval_start.isoformat(),
                             'time_label': current_interval_start.strftime('%H:%M'),
@@ -88,24 +97,13 @@ def get_timeout_analytics_chart():
             # Process last group
             if current_group:
                 avg_timeouts = sum(r['total_timeout_devices'] for r in current_group) / len(current_group)
-                avg_critical = sum(r['critical_devices_count'] for r in current_group) / len(current_group)
+                avg_critical = sum(r.get('critical_devices_count', 0) for r in current_group) / len(current_group)
                 grouped_data.append({
                     'timestamp': current_interval_start.isoformat(),
                     'time_label': current_interval_start.strftime('%H:%M'),
                     'timeout_count': round(avg_timeouts, 1),
                     'critical_count': round(avg_critical, 1)
                 })
-        else:
-            # Use raw data without grouping
-            grouped_data = [
-                {
-                    'timestamp': record['timestamp'],
-                    'time_label': datetime.fromisoformat(record['timestamp']).strftime('%H:%M'),
-                    'timeout_count': record['total_timeout_devices'],
-                    'critical_count': record['critical_devices_count']
-                }
-                for record in analytics_data
-            ]
         
         # Get summary statistics
         summary = service.timeout_tracker.analytics.get_analytics_summary(hours=hours)
@@ -250,3 +248,4 @@ def get_timeout_analytics_summary():
             'success': False,
             'error': str(e)
         }), 500
+
