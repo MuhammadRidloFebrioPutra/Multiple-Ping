@@ -38,6 +38,13 @@ class TimeoutTracker:
         # Initialize CSV file if not exists
         self._initialize_timeout_csv()
         
+        # Initialize timeout analytics
+        from app.utils.timeout_analytics import TimeoutAnalytics
+        self.analytics = TimeoutAnalytics(config)
+        
+        # Track previous timeout IPs for analytics
+        self.previous_timeout_ips = set()
+        
         logger.info(f"TimeoutTracker initialized - CSV: {self.timeout_csv_path}")
         logger.info(f"WhatsApp alerts: {'enabled' if self.whatsapp_enabled else 'disabled'} (threshold: {self.whatsapp_threshold})")
     
@@ -177,6 +184,9 @@ class TimeoutTracker:
             timeout_data = self._read_timeout_data()
             current_time = datetime.now().isoformat()
             
+            # Store current timeout IPs for analytics
+            current_timeout_ips = set(timeout_data.keys())
+            
             processed_ips = set()
             whatsapp_alerts_sent = []
             
@@ -250,6 +260,16 @@ class TimeoutTracker:
             
             # Write updated data back to CSV
             self._write_timeout_data(timeout_data)
+            
+            # Record analytics snapshot
+            updated_timeout_ips = set(timeout_data.keys())
+            self.analytics.record_timeout_snapshot(
+                timeout_data=timeout_data,
+                previous_timeout_ips=self.previous_timeout_ips
+            )
+            
+            # Update previous timeout IPs for next cycle
+            self.previous_timeout_ips = updated_timeout_ips
             
             # Log summary
             total_timeout_devices = len(timeout_data)

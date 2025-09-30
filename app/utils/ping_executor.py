@@ -34,12 +34,14 @@ class PingExecutor:
                 result = {
                     'success': True,
                     'response_time_ms': round(response_time * 1000, 2),
+                    'latency_ms': round(response_time * 1000, 2),
                     'error_message': None
                 }
             else:
                 result = {
                     'success': False,
                     'response_time_ms': None,
+                    'latency_ms': None,
                     'error_message': 'No response (timeout)'
                 }
                 
@@ -47,6 +49,7 @@ class PingExecutor:
             result = {
                 'success': False,
                 'response_time_ms': None,
+                'latency_ms': None,
                 'error_message': f"Ping error: {str(e)}"
             }
         
@@ -61,6 +64,7 @@ class PingExecutor:
             'hostname': device.hostname or device.ip,
             'ping_success': result['success'],
             'response_time_ms': result['response_time_ms'],
+            'latency_ms': result['latency_ms'],
             'error_message': result['error_message'],
             'merk': device.merk,
             'os': device.os,
@@ -107,6 +111,7 @@ class PingExecutor:
                             'hostname': device.hostname or device.ip,
                             'ping_success': False,
                             'response_time_ms': None,
+                            'latency_ms': None,
                             'error_message': f"Ping execution error: {str(e)}",
                             'merk': device.merk,
                             'os': device.os,
@@ -165,12 +170,14 @@ class PingExecutor:
                 result = {
                     'success': True,
                     'response_time_ms': round(response_time * 1000, 2),
+                    'latency_ms': round(response_time * 1000, 2),
                     'error_message': None
                 }
             else:
                 result = {
                     'success': False,
                     'response_time_ms': None,
+                    'latency_ms': None,
                     'error_message': 'No response (timeout)'
                 }
                 
@@ -178,6 +185,7 @@ class PingExecutor:
             result = {
                 'success': False,
                 'response_time_ms': None,
+                'latency_ms': None,
                 'error_message': f"Ping error: {str(e)}"
             }
         
@@ -188,6 +196,7 @@ class PingExecutor:
             'ip_address': ip_address,
             'ping_success': result['success'],
             'response_time_ms': result['response_time_ms'],
+            'latency_ms': result['latency_ms'],
             'error_message': result['error_message'],
             'processing_time_ms': round(processing_time * 1000, 2)
         }
