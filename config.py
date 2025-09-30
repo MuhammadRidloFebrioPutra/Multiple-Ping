@@ -40,6 +40,11 @@ class Config:
     ENABLE_TIMEOUT_TRACKING = os.getenv('ENABLE_TIMEOUT_TRACKING', 'true').lower() == 'true'
     TIMEOUT_CRITICAL_THRESHOLD = int(os.getenv('TIMEOUT_CRITICAL_THRESHOLD', '5'))  # Critical consecutive timeouts
     
+    # WhatsApp Alert Configuration for Timeout
+    ENABLE_WHATSAPP_TIMEOUT_ALERTS = os.getenv('ENABLE_WHATSAPP_TIMEOUT_ALERTS', 'true').lower() == 'true'
+    WHATSAPP_TIMEOUT_THRESHOLD = int(os.getenv('WHATSAPP_TIMEOUT_THRESHOLD', '20'))  # Send WA after 20 consecutive timeouts
+    WHATSAPP_COOLDOWN_MINUTES = int(os.getenv('WHATSAPP_COOLDOWN_MINUTES', '60'))  # Cooldown between alerts for same device
+    
     # Database monitoring configuration
     DEVICE_CHECK_INTERVAL = int(os.getenv('DEVICE_CHECK_INTERVAL', '30'))  # Check database every 30 seconds
     
