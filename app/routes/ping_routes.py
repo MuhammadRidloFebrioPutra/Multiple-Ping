@@ -1,10 +1,12 @@
 from flask import Blueprint, jsonify, request  # type: ignore
 from app.utils.multi_ping_service import get_multi_ping_service
 from config import Config
+from flask_cors import cross_origin
 
 ping_bp = Blueprint('ping', __name__)
 
 @ping_bp.route('/ping/latest', methods=['GET'])
+@cross_origin()
 def get_latest_ping_results():
     """
     Get latest ping results from CSV
@@ -36,6 +38,7 @@ def get_latest_ping_results():
         }), 500
 
 @ping_bp.route('/ping/device/<int:device_id>', methods=['GET'])
+@cross_origin()
 def get_device_ping_results(device_id):
     """
     Get ping results for a specific device from CSV
@@ -67,6 +70,7 @@ def get_device_ping_results(device_id):
         }), 500
 
 @ping_bp.route('/ping/statistics', methods=['GET'])
+@cross_origin()
 def get_ping_statistics():
     """
     Get ping statistics from current CSV data
@@ -127,6 +131,7 @@ def get_ping_statistics():
         }), 500
 
 @ping_bp.route('/ping/status', methods=['GET'])
+@cross_origin()
 def get_device_status_summary():
     """
     Get current status summary for all devices from CSV
@@ -172,6 +177,7 @@ def get_device_status_summary():
         }), 500
 
 @ping_bp.route('/ping/service/status', methods=['GET'])
+@cross_origin()
 def get_service_status():
     """
     Get ping monitoring service status
@@ -201,6 +207,7 @@ def get_service_status():
         }), 500
 
 @ping_bp.route('/ping/service/start', methods=['POST'])
+@cross_origin()
 def start_ping_service():
     """
     Start the ping monitoring service
@@ -228,6 +235,7 @@ def start_ping_service():
         }), 500
 
 @ping_bp.route('/ping/service/stop', methods=['POST'])
+@cross_origin()
 def stop_ping_service():
     """
     Stop the ping monitoring service
@@ -254,6 +262,7 @@ def stop_ping_service():
         }), 500
 
 @ping_bp.route('/ping/test/<string:ip_address>', methods=['POST'])
+@cross_origin()
 def test_ping_device():
     """
     Test ping to a specific IP address
@@ -302,6 +311,7 @@ def test_ping_device():
 
 # Health check endpoint
 @ping_bp.route('/health', methods=['GET'])
+@cross_origin()
 def health_check():
     """
     Health check endpoint
@@ -313,6 +323,7 @@ def health_check():
     })
 
 @ping_bp.route('/ping/csv/files', methods=['GET'])
+@cross_origin()
 def get_csv_files():
     """
     Get list of available CSV files
@@ -339,6 +350,7 @@ def get_csv_files():
         }), 500
 
 @ping_bp.route('/ping/database/monitoring', methods=['GET'])
+@cross_origin()
 def get_database_monitoring_status():
     """
     Get database monitoring status and statistics
@@ -364,6 +376,7 @@ def get_database_monitoring_status():
         }), 500
 
 @ping_bp.route('/ping/database/reload', methods=['POST'])
+@cross_origin()
 def force_database_reload():
     """
     Force reload device list from database
@@ -389,6 +402,7 @@ def force_database_reload():
         }), 500
 
 @ping_bp.route('/ping/csv/rebuild', methods=['POST'])
+@cross_origin()
 def rebuild_today_csv():
     """
     Rebuild today's CSV file from current active devices (reuse existing cache to prevent double ping)
@@ -428,6 +442,7 @@ def rebuild_today_csv():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @ping_bp.route('/ping/summary/offline', methods=['GET'])
+@cross_origin()
 def get_offline_summary():
     """
     Get a summary of offline devices.
@@ -482,6 +497,7 @@ def get_offline_summary():
         }), 500
 
 @ping_bp.route('/ping/timeout/summary', methods=['GET'])
+@cross_origin()
 def get_timeout_summary():
     """
     Get timeout tracking summary
@@ -507,6 +523,7 @@ def get_timeout_summary():
         }), 500
 
 @ping_bp.route('/ping/timeout/devices', methods=['GET'])
+@cross_origin()
 def get_timeout_devices():
     """
     Get devices with consecutive timeouts
@@ -538,6 +555,7 @@ def get_timeout_devices():
         }), 500
 
 @ping_bp.route('/ping/timeout/critical', methods=['GET'])
+@cross_origin()
 def get_critical_timeouts():
     """
     Get devices with critical timeout counts
@@ -569,6 +587,7 @@ def get_critical_timeouts():
         }), 500
 
 @ping_bp.route('/ping/timeout/report', methods=['GET'])
+@cross_origin()
 def get_timeout_report():
     """
     Get comprehensive timeout tracking report
@@ -600,6 +619,7 @@ def get_timeout_report():
         }), 500
 
 @ping_bp.route('/ping/timeout/reset', methods=['POST'])
+@cross_origin()
 def reset_timeout_tracking():
     """
     Reset timeout tracking (clear CSV)
