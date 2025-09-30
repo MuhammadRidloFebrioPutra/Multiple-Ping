@@ -120,6 +120,7 @@ POST /api/ping/timeout/whatsapp/test?ip_address=10.2.30.184
 GET /api/ping/timeout/analytics/chart?hours=24&interval=15
 GET /api/ping/timeout/analytics/multi-day?days=7
 GET /api/ping/timeout/analytics/summary?hours=24
+GET /api/ping/timeout/analytics/chart?interval=0
 ```
 
 ## Contoh Response API

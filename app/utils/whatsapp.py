@@ -326,10 +326,10 @@ def send_whatsapp_messages(cctv_id, contacts_file, type_="group", method="comput
 • Hostname: {device_data.get('hostname', 'Unknown')}
 • Device ID: {device_data.get('device_id', device_id)}
 • Brand/Model: {device_data.get('merk', 'Unknown')}
-• Status: {device_data.get('kondisi', 'Unknown')}
+• Kondisi Perangkat : {device_data.get('kondisi', 'Unknown')}
 
 ⏰ Timeout Details:
-• Consecutive Timeouts: {device_data.get('consecutive_timeouts', 'Unknown')}
+• Timeout Streak: {device_data.get('consecutive_timeouts', 'Unknown')}
 • First Timeout: {format_datetime(device_data.get('first_timeout', 'Unknown'))}
 • Last Check: {format_datetime(device_data.get('last_timeout', 'Unknown'))}
 

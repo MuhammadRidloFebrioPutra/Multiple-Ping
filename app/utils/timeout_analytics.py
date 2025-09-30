@@ -20,9 +20,9 @@ class TimeoutAnalytics:
         # Ensure directory exists
         os.makedirs(self.analytics_dir, exist_ok=True)
         
-        # CSV headers for timeout analytics - Only 3 columns for line chart
+        # CSV headers for timeout analytics - Only 2 columns
         self.analytics_headers = [
-            'timestamp', 'total_timeout_devices', 'critical_devices_count'
+            'timestamp', 'total_timeout_devices'
         ]
         
         logger.info(f"TimeoutAnalytics initialized - Directory: {self.analytics_dir}")
@@ -65,17 +65,10 @@ class TimeoutAnalytics:
             current_timeout_ips = set(timeout_data.keys())
             total_timeout_devices = len(current_timeout_ips)
             
-            # Calculate critical devices (>= 10 consecutive timeouts)
-            critical_devices_count = sum(
-                1 for entry in timeout_data.values() 
-                if int(entry.get('consecutive_timeouts', 0)) >= 10
-            )
-            
-            # Create analytics record with only 3 fields
+            # Only 2 fields in analytics record
             analytics_record = {
                 'timestamp': current_time.isoformat(),
-                'total_timeout_devices': total_timeout_devices,
-                'critical_devices_count': critical_devices_count
+                'total_timeout_devices': total_timeout_devices
             }
             
             # Append to CSV
@@ -83,15 +76,14 @@ class TimeoutAnalytics:
                 writer = csv.DictWriter(csvfile, fieldnames=self.analytics_headers)
                 writer.writerow(analytics_record) 
             
-            logger.debug(f"Recorded timeout analytics: {total_timeout_devices} devices, "
-                        f"{critical_devices_count} critical")
+            logger.debug(f"Recorded timeout analytics: {total_timeout_devices} devices")
             
             return True
             
         except Exception as e:
             logger.error(f"Error recording timeout snapshot: {e}")
             return False
-    
+
     def get_analytics_data(self, hours: int = 24, date_str: str = None) -> List[Dict]:
         """ 
         Get timeout analytics data for time-series chart
@@ -124,10 +116,8 @@ class TimeoutAnalytics:
                         
                         # Filter by time range
                         if record_time >= start_time:
-                            # Convert numeric fields - only 2 numeric fields now
+                            # Convert numeric fields - only 1 numeric field now
                             row['total_timeout_devices'] = int(row['total_timeout_devices'])
-                            row['critical_devices_count'] = int(row['critical_devices_count'])
-                            
                             analytics_data.append(row)
                             
                     except (ValueError, KeyError) as e:
@@ -140,7 +130,7 @@ class TimeoutAnalytics:
         except Exception as e:
             logger.error(f"Error getting analytics data: {e}")
             return []
-    
+
     def get_multi_day_analytics(self, days: int = 7) -> List[Dict]:
         """
         Get analytics data spanning multiple days
@@ -253,6 +243,12 @@ class TimeoutAnalytics:
                         except Exception as e:
                             logger.error(f"Error deleting analytics file {filename}: {e}")
             
+            if deleted_files > 0:
+                logger.info(f"Cleaned up {deleted_files} old analytics files")
+                
+        except Exception as e:
+            logger.error(f"Error during analytics cleanup: {e}")
+            logger.info(f"Deleted old analytics file: {filename} (age: {age_days} days)")
             if deleted_files > 0:
                 logger.info(f"Cleaned up {deleted_files} old analytics files")
                 
