@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
+    #url and port for CORS
+    CONFIG_HOST = os.getenv('CONFIG_HOST', '127.0.0.1')
+    CONFIG_PORT = os.getenv('CONFIG_PORT', '5000')
+    
     # Database configuration
     DB_CONNECTION = os.getenv('DB_CONNECTION', 'mysql+pymysql')
     DB_HOST = os.getenv('DB_HOST', '127.0.0.1')
