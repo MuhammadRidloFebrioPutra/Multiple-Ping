@@ -25,10 +25,11 @@ Hasil ping disimpan dalam direktori `ping_results/` dengan format:
   - Nama file: `ping_results_YYYYMMDD.csv`
   - Format: CSV dengan header
   - Rotasi: File baru setiap hari
-  - Kolom: timestamp, device_id, ip_address, hostname, ping_success, response_time_ms, error_message
+  - Kolom: timestamp, device_id, ip_address, hostname, ping_success, response_time_ms, **latency_ms**, error_message
   - **🆕 Optimized**: Tidak ada duplikasi entry dalam interval yang sama
 
 - **🆕 Timeout Tracking**: `timeout_tracking.csv`
+
   - Nama file: `timeout_tracking.csv` (single file, updated continuously)
   - Format: CSV dengan header untuk tracking timeout berturut-turut
   - Kolom: ip_address, hostname, device_id, merk, os, kondisi, consecutive_timeouts, first_timeout, last_timeout, last_updated
@@ -37,6 +38,12 @@ Hasil ping disimpan dalam direktori `ping_results/` dengan format:
     - Timeout berturut-turut menambah counter tanpa duplikasi (satu IP satu line)
     - IP yang ping berhasil dihapus dari tracking
     - Data diurutkan berdasarkan consecutive_timeouts (tertinggi di atas)
+
+- **🆕 Timeout Analytics**: `timeout_analytics_YYYYMMDD.csv`
+  - Nama file: `timeout_analytics_YYYYMMDD.csv` (file baru setiap hari)
+  - Format: CSV dengan header untuk analytics time-series
+  - Kolom: timestamp, total_timeout_devices, critical_devices_count
+  - **Purpose**: Data untuk line chart dan analytics dashboard (3 kolom saja)
 
 ## API Endpoints
 
@@ -105,6 +112,14 @@ POST /api/ping/timeout/reset
 ```
 GET /api/ping/timeout/whatsapp/summary
 POST /api/ping/timeout/whatsapp/test?ip_address=10.2.30.184
+```
+
+### 🆕 11. Timeout Analytics Endpoints (Line Chart)
+
+```
+GET /api/ping/timeout/analytics/chart?hours=24&interval=15
+GET /api/ping/timeout/analytics/multi-day?days=7
+GET /api/ping/timeout/analytics/summary?hours=24
 ```
 
 ## Contoh Response API
@@ -176,6 +191,32 @@ POST /api/ping/timeout/whatsapp/test?ip_address=10.2.30.184
     "total_alerts_sent": 10,
     "devices_alerted": 7,
     "critical_timeouts_detected": 3
+  }
+}
+```
+
+### 🆕 Timeout Analytics Chart Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "chart_data": [
+      {
+        "timestamp": "2025-09-26T12:00:00",
+        "time_label": "12:00",
+        "timeout_count": 15.5,
+        "critical_count": 3
+      }
+    ],
+    "summary": {
+      "total_records": 96,
+      "time_range_hours": 24,
+      "avg_timeout_devices": 12.3,
+      "peak_timeout_devices": 18,
+      "avg_critical_devices": 2.1,
+      "peak_critical_devices": 5
+    }
   }
 }
 ```

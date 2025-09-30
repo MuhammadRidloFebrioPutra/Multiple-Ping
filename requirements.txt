@@ -11,3 +11,5 @@ undetected_chromedriver
 setuptools
 webdriver_manager
 pyperclip
+numpy
+Flask-Cors
