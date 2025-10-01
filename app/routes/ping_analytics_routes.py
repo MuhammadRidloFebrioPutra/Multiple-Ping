@@ -55,7 +55,8 @@ def get_timeout_analytics_chart():
         if not interval or interval <= 0:
             grouped_data = [
                 {
-                    'time_label': datetime.fromisoformat(record['timestamp']).strftime('%Y-%m-%d %H:%M'),
+                    'timestamp': record['timestamp'],
+                    # 'time_label': datetime.fromisoformat(record['timestamp']).strftime('%Y-%m-%d %H:%M'),
                     'timeout_count': record['total_timeout_devices'],
                 }
                 for record in analytics_data
