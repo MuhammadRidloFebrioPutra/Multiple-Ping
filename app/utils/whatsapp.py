@@ -9,6 +9,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from fake_useragent import UserAgent
 from undetected_chromedriver import Chrome, ChromeOptions
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 import logging
 import os
 import re
@@ -24,6 +26,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Global WebDriver instance
 driver = None
+browser_running = False
+
+# Tambahkan variabel global untuk timer auto-close
+auto_close_timer = None
+AUTO_CLOSE_DELAY = 3000  # 5 menit dalam detik
 
 # Function to set up profile directory
 def setup_profile_directory(profile_path):
@@ -232,7 +239,7 @@ def initialize_driver(profile_path, proxy=None, chrome_binary=None):
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-extensions')
     chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument(f'--window-size={1920},{1080}')
+    chrome_options.add_argument(f'--window-size=1920,1080')
     chrome_options.add_argument(f'--user-data-dir={profile_path}')
     chrome_options.add_argument("--force-device-scale-factor=1")
     chrome_options.add_argument("--high-dpi-support=1")
@@ -244,7 +251,12 @@ def initialize_driver(profile_path, proxy=None, chrome_binary=None):
         chrome_options.add_argument(f'--proxy-server={proxy}')
         logging.info(f"Using proxy: {proxy}")
 
-    driver = Chrome(options=chrome_options, executable_path=ChromeDriverManager().install())
+    # ✅ PERBAIKAN DISINI
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=chrome_options
+    )
+
     logging.info("Browser initialized successfully")
     driver.get("https://web.whatsapp.com")
     logging.info("Navigated to WhatsApp Web")
@@ -279,6 +291,15 @@ def close_driver():
 
 # Register close_driver to run when the application exits
 atexit.register(close_driver)
+
+def reset_auto_close_timer():
+    global auto_close_timer
+    if auto_close_timer is not None:
+        auto_close_timer.cancel()
+    auto_close_timer = threading.Timer(AUTO_CLOSE_DELAY, close_driver)
+    auto_close_timer.daemon = True
+    auto_close_timer.start()
+    logging.info(f"Auto-close browser timer reset for {AUTO_CLOSE_DELAY} seconds.")
 
 # Function to send WhatsApp messages
 def send_whatsapp_messages(cctv_id, contacts_file, type_="group", method="computer", profile_path="chrome_profile", proxy=None, chrome_binary=None, max_retries=3):
@@ -387,6 +408,7 @@ Sensor Detected : Anomaly Detected"""
                         message_box.send_keys(Keys.ENTER)
                         logging.info(f"Message sent to {type_} {target} using {method} method")
                         results.append({"target": target, "status": "success"})
+                        reset_auto_close_timer()  # <-- Reset timer setiap kali pesan berhasil dikirim
                         break
                     except Exception as e:
                         logging.error(f"Attempt {attempt + 1} failed for {type_} {target}: {e}")
@@ -405,6 +427,142 @@ Sensor Detected : Anomaly Detected"""
 
     return {"status": "error", "message": f"Failed to avoid mobile redirect after {max_retries} attempts"}
 
+# def initialize_browser(profile_path="chrome_profile", proxy=None, chrome_binary=None, max_retries=3):
+#     global browser_running, driver
+#     retry_count = 0
+#     while retry_count < max_retries:
+#         try:
+#             driver = initialize_driver(profile_path, proxy, chrome_binary)
+#             current_url = driver.current_url
+#             if "/mobile" in current_url:
+#                 logging.warning(f"Mobile redirect detected on attempt {retry_count + 1}. Restarting...")
+#                 close_driver()
+#                 retry_count += 1
+#                 time.sleep(random.uniform(5, 10))
+#                 continue
+#             browser_running = True
+#             logging.info("Browser initialized successfully")
+#             return {"status": "success", "message": "Browser initialized"}
+#         except Exception as e:
+#             logging.error(f"Browser initialization failed: {e}")
+#             retry_count += 1
+#             if retry_count < max_retries:
+#                 logging.info(f"Retrying browser initialization (attempt {retry_count + 1}/{max_retries})")
+#             else:
+#                 return {"status": "error", "message": f"Failed to initialize browser after {max_retries} attempts"}
+#     return {"status": "error", "message": f"Failed to avoid mobile redirect after {max_retries} attempts"}
+
+# def send_whatsapp_messages(cctv_id, contacts_file, type_="group", method="computer", profile_path="chrome_profile", proxy=None, chrome_binary=None, max_retries=3):
+#     global browser_running, driver
+#     if type_ not in ['contact', 'group']:
+#         return {"status": "error", "message": f"Invalid type: {type_}. Must be 'contact' or 'group'."}
+#     if method not in ['human', 'computer']:
+#         return {"status": "error", "message": f"Invalid method: {method}. Must be 'human' or 'computer'."}
+
+#     # Check if browser is running; if not, initialize it
+#     if not browser_running:
+#         init_result = initialize_browser(profile_path, proxy, chrome_binary, max_retries)
+#         if init_result["status"] == "error":
+#             return init_result
+
+#     try:
+#         contacts = load_contacts(contacts_file, type_)
+#         if not contacts:
+#             return {"status": "error", "message": "No valid contacts or groups loaded"}
+
+#         results = []
+#         for target, base_message in contacts:
+#             # Check if this is a timeout alert (contains TIMEOUT- prefix)
+#             if cctv_id.startswith('TIMEOUT-'):
+#                 # Parse timeout alert data
+#                 parts = cctv_id.replace('TIMEOUT-', '').split('-', 1)
+#                 device_id = parts[0] if len(parts) > 0 else 'Unknown'
+#                 ip_address = parts[1] if len(parts) > 1 else 'Unknown'
+                
+#                 # Get device data from timeout tracking
+#                 device_data = get_timeout_device_data(ip_address)
+                
+#                 alert_message = f"""🚨 DEVICE TIMEOUT ALERT 🚨
+
+# ⚠️ CRITICAL: Device Tidak Dapat Dijangkau!
+
+# 📍 Device Information:
+# • IP Address: {device_data.get('ip_address', ip_address)}
+# • Hostname: {device_data.get('hostname', 'Unknown')}
+# • Device ID: {device_data.get('device_id', device_id)}
+# • Brand/Model: {device_data.get('merk', 'Unknown')}
+# • Kondisi Perangkat : {device_data.get('kondisi', 'Unknown')}
+
+# ⏰ Timeout Details:
+# • Timeout Streak: {device_data.get('consecutive_timeouts', 'Unknown')}
+# • First Timeout: {format_datetime(device_data.get('first_timeout', 'Unknown'))}
+# • Last Check: {format_datetime(device_data.get('last_timeout', 'Unknown'))}
+
+# 🔧 Action Required:
+# 1. Check device power and network connection
+# 2. Verify network connectivity to {ip_address}
+# 3. Physical inspection may be required
+# 4. Contact technical support if issue persists
+
+# Alert Time: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')} WIB
+
+# This is an automated alert from Pelindo Monitoring System."""
+#             else:
+#                 # Default sensor alert message
+#                 alert_message = f"""🚨 CCTV-{cctv_id} ALERT 🚨
+
+# Status: firing
+# Open at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB
+# Close at: -
+# Duration: -
+# Annotations:
+
+# 🚨 Digital Sensor Alert!
+
+# * Device: ENVIROMUX-16D
+# * Location: DC Pelindo Surabaya
+# * Sensor: Water Leak - PAC #2
+# * Condition: Anomaly Detected
+
+# summary :
+# Sensor Detected : Anomaly Detected"""
+
+#             logging.info(f"Processing {type_}: {target}")
+#             for attempt in range(3):
+#                 try:
+#                     if type_ == 'contact':
+#                         if not search_contact(driver, target):
+#                             results.append({"target": target, "status": "failed", "error": f"Failed to open chat for contact {target}"})
+#                             break
+#                     elif type_ == 'group':
+#                         if not search_group(driver, target):
+#                             results.append({"target": target, "status": "failed", "error": f"Failed to open chat for group {target}"})
+#                             break
+
+#                     message_box = WebDriverWait(driver, 30).until(
+#                         EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Type a message"]'))
+#                     )
+#                     logging.info(f"Message box located for {target}")
+
+#                     simulate_mouse_movement(driver)
+#                     if method == 'human':
+#                         human_typing(message_box, alert_message)
+#                     else:
+#                         paste_message(message_box, alert_message)
+#                     message_box.send_keys(Keys.ENTER)
+#                     logging.info(f"Message sent to {type_} {target} using {method} method")
+#                     results.append({"target": target, "status": "success"})
+#                     break
+#                 except Exception as e:
+#                     logging.error(f"Attempt {attempt + 1} failed for {type_} {target}: {e}")
+#                     if attempt == 2:
+#                         results.append({"target": target, "status": "failed", "error": str(e)})
+
+#         return {"status": "success", "results": results}
+
+#     except Exception as e:
+#         logging.error(f"An error occurred: {e}")
+#         return {"status": "error", "message": str(e)}
 def get_timeout_device_data(ip_address: str) -> Dict:
     """Get device data from timeout tracking CSV"""
     try:
