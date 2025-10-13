@@ -42,7 +42,7 @@ class Config:
     
     # WhatsApp Alert Configuration for Timeout
     ENABLE_WHATSAPP_TIMEOUT_ALERTS = os.getenv('ENABLE_WHATSAPP_TIMEOUT_ALERTS', 'true').lower() == 'true'
-    WHATSAPP_TIMEOUT_THRESHOLD = int(os.getenv('WHATSAPP_TIMEOUT_THRESHOLD', '20'))  # Send WA after 20 consecutive timeouts
+    WHATSAPP_TIMEOUT_THRESHOLD = int(os.getenv('WHATSAPP_TIMEOUT_THRESHOLD', '15'))  # Send WA after 20 consecutive timeouts
     WHATSAPP_COOLDOWN_MINUTES = int(os.getenv('WHATSAPP_COOLDOWN_MINUTES', '60'))  # Cooldown between alerts for same device
     
     # Database monitoring configuration
