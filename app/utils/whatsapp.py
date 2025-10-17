@@ -32,6 +32,10 @@ browser_running = False
 auto_close_timer = None
 AUTO_CLOSE_DELAY = 3000  # 5 menit dalam detik
 
+# Cache untuk kontak/grup yang sudah dicari
+searched_contacts_cache = set()
+searched_groups_cache = set()
+
 # Function to set up profile directory
 def setup_profile_directory(profile_path):
     try:
@@ -160,8 +164,32 @@ def periodic_save_session():
         # Sleep for a random interval between 5 and 7 minutes (300 to 420 seconds)
         time.sleep(random.uniform(300, 420))
 
-# Function to search for a contact
+# Function to clear search box
+def clear_search_box(driver):
+    try:
+        search_box = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Search or start a new chat"]'))
+        )
+        search_box.click()
+        time.sleep(random.uniform(0.3, 0.7))
+        search_box.send_keys(Keys.CONTROL + "a")
+        search_box.send_keys(Keys.DELETE)
+        time.sleep(random.uniform(0.3, 0.7))
+        logging.info("Search box cleared")
+        return True
+    except Exception as e:
+        logging.warning(f"Failed to clear search box: {e}")
+        return False
+
+# Function to search for a contact (dengan cache)
 def search_contact(driver, phone_number):
+    global searched_contacts_cache
+    
+    # Jika sudah dicari sebelumnya, langsung return True
+    if phone_number in searched_contacts_cache:
+        logging.info(f"Contact {phone_number} already in cache, skipping search")
+        return True
+        
     try:
         search_box = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Search or start a new chat"]'))
@@ -181,13 +209,23 @@ def search_contact(driver, phone_number):
             EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Type a message"]'))
         )
         logging.info(f"Chat opened for {phone_number}")
+        
+        # Tambahkan ke cache
+        searched_contacts_cache.add(phone_number)
         return True
     except Exception as e:
         logging.error(f"Failed to search for {phone_number}: {e}")
         return False
 
-# Function to search for a group
+# Function to search for a group (dengan cache)
 def search_group(driver, group_name):
+    global searched_groups_cache
+    
+    # Jika sudah dicari sebelumnya, langsung return True
+    if group_name in searched_groups_cache:
+        logging.info(f"Group {group_name} already in cache, skipping search")
+        return True
+        
     try:
         search_box = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Search or start a new chat"]'))
@@ -207,6 +245,9 @@ def search_group(driver, group_name):
             EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Type a message"]'))
         )
         logging.info(f"Group chat opened for {group_name}")
+        
+        # Tambahkan ke cache
+        searched_groups_cache.add(group_name)
         return True
     except Exception as e:
         logging.error(f"Failed to search for group {group_name}: {e}")
@@ -283,11 +324,14 @@ def initialize_driver(profile_path, proxy=None, chrome_binary=None):
 
 # Function to close the WebDriver
 def close_driver():
-    global driver
+    global driver, searched_contacts_cache, searched_groups_cache
     if driver:
         driver.quit()
         logging.info("Browser closed")
         driver = None
+    # Clear cache ketika browser ditutup
+    searched_contacts_cache.clear()
+    searched_groups_cache.clear()
 
 # Register close_driver to run when the application exits
 atexit.register(close_driver)
@@ -301,7 +345,28 @@ def reset_auto_close_timer():
     auto_close_timer.start()
     logging.info(f"Auto-close browser timer reset for {AUTO_CLOSE_DELAY} seconds.")
 
-# Function to send WhatsApp messages
+# Function to send message to current chat (tanpa search berulang)
+def send_message_to_current_chat(driver, message_text, method="computer"):
+    """Send message to currently opened chat without searching again"""
+    try:
+        message_box = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Type a message"]'))
+        )
+        logging.info("Message box located for current chat")
+
+        simulate_mouse_movement(driver)
+        if method == 'human':
+            human_typing(message_box, message_text)
+        else:
+            paste_message(message_box, message_text)
+        message_box.send_keys(Keys.ENTER)
+        logging.info(f"Message sent using {method} method")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to send message to current chat: {e}")
+        return False
+
+# Function to send WhatsApp messages (optimized - search sekali saja)
 def send_whatsapp_messages(cctv_id, contacts_file, type_="group", method="computer", profile_path="chrome_profile", proxy=None, chrome_binary=None, max_retries=3):
     if type_ not in ['contact', 'group']:
         return {"status": "error", "message": f"Invalid type: {type_}. Must be 'contact' or 'group'."}
@@ -328,7 +393,7 @@ def send_whatsapp_messages(cctv_id, contacts_file, type_="group", method="comput
 
             results = []
             for target, base_message in contacts:
-                # Check if this is a timeout alert (contains TIMEOUT- prefix)
+                # Generate alert message
                 if cctv_id.startswith('TIMEOUT-'):
                     # Parse timeout alert data
                     parts = cctv_id.replace('TIMEOUT-', '').split('-', 1)
@@ -384,36 +449,47 @@ summary :
 Sensor Detected : Anomaly Detected"""
 
                 logging.info(f"Processing {type_}: {target}")
+                
+                # SEARCH HANYA 1 KALI untuk setiap target
+                search_success = False
                 for attempt in range(3):
                     try:
                         if type_ == 'contact':
-                            if not search_contact(driver, target):
-                                results.append({"target": target, "status": "failed", "error": f"Failed to open chat for contact {target}"})
-                                break
+                            search_success = search_contact(driver, target)
                         elif type_ == 'group':
-                            if not search_group(driver, target):
-                                results.append({"target": target, "status": "failed", "error": f"Failed to open chat for group {target}"})
-                                break
-
-                        message_box = WebDriverWait(driver, 30).until(
-                            EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Type a message"]'))
-                        )
-                        logging.info(f"Message box located for {target}")
-
-                        simulate_mouse_movement(driver)
-                        if method == 'human':
-                            human_typing(message_box, alert_message)
-                        else:
-                            paste_message(message_box, alert_message)
-                        message_box.send_keys(Keys.ENTER)
-                        logging.info(f"Message sent to {type_} {target} using {method} method")
-                        results.append({"target": target, "status": "success"})
-                        reset_auto_close_timer()  # <-- Reset timer setiap kali pesan berhasil dikirim
-                        break
+                            search_success = search_group(driver, target)
+                            
+                        if search_success:
+                            break
                     except Exception as e:
-                        logging.error(f"Attempt {attempt + 1} failed for {type_} {target}: {e}")
+                        logging.error(f"Search attempt {attempt + 1} failed for {type_} {target}: {e}")
                         if attempt == 2:
-                            results.append({"target": target, "status": "failed", "error": str(e)})
+                            results.append({"target": target, "status": "failed", "error": f"Search failed: {str(e)}"})
+                            continue
+
+                if not search_success:
+                    results.append({"target": target, "status": "failed", "error": f"Failed to open chat for {type_} {target}"})
+                    continue
+
+                # Kirim pesan ke chat yang sudah terbuka
+                message_sent = send_message_to_current_chat(driver, alert_message, method)
+                if message_sent:
+                    results.append({"target": target, "status": "success"})
+                    reset_auto_close_timer()
+                else:
+                    results.append({"target": target, "status": "failed", "error": "Failed to send message"})
+
+                # Kembali ke halaman utama untuk memastikan chat berikutnya fresh
+                # Hanya jika bukan kontak/grup terakhir
+                if target != contacts[-1][0]:
+                    try:
+                        driver.get("https://web.whatsapp.com")
+                        WebDriverWait(driver, 20).until(
+                            EC.presence_of_element_located((By.XPATH, '//div[@aria-placeholder="Search or start a new chat"]'))
+                        )
+                        time.sleep(random.uniform(1, 2))
+                    except Exception as e:
+                        logging.warning(f"Failed to return to main page: {e}")
 
             return {"status": "success", "results": results}
 
