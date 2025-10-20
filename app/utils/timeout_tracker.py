@@ -178,14 +178,14 @@ class TimeoutTracker:
     
     def _send_whatsapp_timeout_alert(self, device_data: Dict) -> bool:
         """
-        Send WhatsApp alert for timeout device
+        Send WhatsApp alert for timeout device using Watzap API
         """
         try:
-            from app.routes.whatsapp_routes import get_whatsapp_service
+            from app.routes.watzap_routes import get_watzap_service
 
-            whatsapp_service = get_whatsapp_service()
-            if not whatsapp_service:
-                logger.error("WhatsApp service not available for timeout alert")
+            watzap_service = get_watzap_service()
+            if not watzap_service:
+                logger.error("❌ Watzap service not available for timeout alert")
                 return False
 
             ip_address = device_data.get('ip_address', 'Unknown')
@@ -204,21 +204,27 @@ class TimeoutTracker:
             except:
                 first_timeout_formatted = first_timeout
 
-            alert_id = f"TIMEOUT-{device_id}-{ip_address}"
-
-            result = whatsapp_service.send_alert(alert_id)
+            logger.info(f"🔔 Attempting to send Watzap timeout alert for {hostname} ({ip_address})")
+            logger.info(f"   Device: {device_id}, Merk: {merk}, Consecutive timeouts: {consecutive_timeouts}")
+            
+            # Kirim alert menggunakan Watzap
+            result = watzap_service.send_timeout_alert(device_data)
 
             if result.get('status') == 'success':
-                logger.info(f"WhatsApp timeout alert sent successfully for {hostname} ({ip_address})")
+                logger.info(f"✅ Watzap timeout alert sent successfully for {hostname} ({ip_address})")
+                logger.info(f"   Response: {result.get('message', 'No message')}")
                 # Tambahkan ke alerted_list.csv
                 self._add_to_alerted_list(device_data)
                 return True
             else:
-                logger.error(f"Failed to send WhatsApp timeout alert: {result.get('message', 'Unknown error')}")
+                logger.error(f"❌ Failed to send Watzap timeout alert: {result.get('message', 'Unknown error')}")
+                logger.error(f"   Full result: {result}")
                 return False
 
         except Exception as e:
-            logger.error(f"Error sending WhatsApp timeout alert: {e}")
+            logger.error(f"❌ Error sending Watzap timeout alert: {e}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             return False
 
     def _add_to_alerted_list(self, device_data: Dict):
