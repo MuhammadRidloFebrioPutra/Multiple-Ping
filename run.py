@@ -1,6 +1,7 @@
 from app import create_app
 from app.utils.multi_ping_service import get_multi_ping_service
-from app.routes.whatsapp_routes import get_whatsapp_service
+# from app.routes.whatsapp_routes import get_whatsapp_service  # DISABLED - Menggunakan Watzap
+from app.routes.watzap_routes import get_watzap_service
 from config import Config
 import atexit
 import logging
@@ -16,12 +17,12 @@ config = Config()
 monitoring_service = get_multi_ping_service(config)
 service_name = "Multi-Ping Monitoring Service"
 
-# Initialize WhatsApp Service
-whatsapp_service = None
+# Initialize Watzap Service only (WhatsApp Selenium disabled)
+watzap_service = None
 
 def initialize_services():
     """Initialize all services"""
-    global monitoring_service, whatsapp_service
+    global monitoring_service, watzap_service
     
     # Initialize Multi-Ping Service
     if monitoring_service:
@@ -39,23 +40,28 @@ def initialize_services():
     else:
         print("❌ Failed to initialize Multi-Ping Monitoring Service")
     
-    # Initialize WhatsApp Service
+    # WhatsApp Selenium Service DISABLED - Using Watzap API instead
+    print("ℹ️  WhatsApp Selenium service disabled (using Watzap API)")
+    
+    # Initialize Watzap Service
     try:
-        whatsapp_service = get_whatsapp_service()
-        whatsapp_status = whatsapp_service.test_setup()
+        watzap_service = get_watzap_service()
+        watzap_status = watzap_service.get_status()
         
-        if whatsapp_status.get('overall_status') == 'ready':
-            print("✅ WhatsApp Alert Service initialized")
-            contacts_count = whatsapp_status['contacts_file']['contacts_loaded']
-            print(f"   - Contacts loaded: {contacts_count}")
-            print(f"   - Chrome binary: {'✅' if whatsapp_status['chrome_binary']['exists'] else '❌'}")
+        if watzap_status.get('overall_status') == 'ready':
+            print("✅ Watzap Service initialized")
+            print(f"   - API Key: {watzap_status.get('api_key', 'Not configured')}")
+            print(f"   - Number Key: configured")
+            print(f"   - Default Group: {watzap_status.get('default_group', 'Not set')}")
+            conn_status = watzap_status.get('connection_status', {})
+            print(f"   - Connection: {'✅ Connected' if conn_status.get('status') == 'success' else '❌ Error'}")
         else:
-            print("⚠️  WhatsApp Alert Service needs setup")
-            print("   - Check contacts.txt file and Chrome installation")
+            print("⚠️  Watzap Service needs setup")
+            print("   - Check WATZAP_API_KEY configuration")
             
     except Exception as e:
-        print(f"❌ Failed to initialize WhatsApp service: {e}")
-        whatsapp_service = None
+        print(f"❌ Failed to initialize Watzap service: {e}")
+        watzap_service = None
 
 def cleanup_services():
     """Cleanup all services"""
@@ -63,9 +69,10 @@ def cleanup_services():
         monitoring_service.stop()
         print(f"🛑 {service_name} stopped")
     
-    if whatsapp_service:
-        whatsapp_service.cleanup()
-        print("🛑 WhatsApp Alert Service stopped")
+    # WhatsApp Selenium cleanup disabled
+    
+    if watzap_service:
+        print("🛑 Watzap Service stopped")
 
 # Register cleanup function
 atexit.register(cleanup_services)
@@ -75,11 +82,19 @@ initialize_services()
 
 if __name__ == "__main__":
     try:
-        print(f"🚀 Starting integrated Flask application on http://localhost:5000")
+        print(f"\n🚀 Starting integrated Flask application on http://localhost:5000")
         print(f"📡 Available endpoints:")
         print(f"   - Ping API: http://localhost:5000/api/ping/")
-        print(f"   - WhatsApp API: http://localhost:5000/api/whatsapp/")
-        print(f"   - WhatsApp Alert: http://localhost:5000/api/whatsapp/alert?id=CCTV-1")
+        print(f"   - Watzap API: http://localhost:5000/api/watzap/")
+        print(f"")
+        print(f"📤 Watzap Endpoints:")
+        print(f"   - Status: GET  http://localhost:5000/api/watzap/status")
+        print(f"   - Send:   POST http://localhost:5000/api/watzap/send")
+        print(f"   - Alert:  POST http://localhost:5000/api/watzap/timeout-alert")
+        print(f"   - Broadcast: POST http://localhost:5000/api/watzap/broadcast")
+        print(f"   - Test:   GET  http://localhost:5000/api/watzap/test")
+        print(f"")
+        print(f"ℹ️  WhatsApp Selenium endpoints disabled - Using Watzap API")
         
         app.run(debug=True, host='0.0.0.0', port=5000)
     except KeyboardInterrupt:

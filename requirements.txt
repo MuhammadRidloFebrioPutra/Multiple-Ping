@@ -16,3 +16,4 @@ numpy
 Flask-Cors
 gevent
 eventlet
+requests
