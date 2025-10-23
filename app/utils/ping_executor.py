@@ -30,14 +30,25 @@ class PingExecutor:
             # Using ping3 library for cross-platform ping
             response_time = ping3.ping(device.ip, timeout=self.ping_timeout)
             
-            if response_time is not None:
+            # CRITICAL FIX: ping3 returns False for "Destination host unreachable"
+            # We MUST check if response_time is a number (float), not just "not None"
+            if response_time is not None and response_time is not False and isinstance(response_time, (int, float)):
                 result = {
                     'success': True,
                     'response_time_ms': round(response_time * 1000, 2),
                     'latency_ms': round(response_time * 1000, 2),
                     'error_message': None
                 }
+            elif response_time is False:
+                # False means "Destination host unreachable"
+                result = {
+                    'success': False,
+                    'response_time_ms': None,
+                    'latency_ms': None,
+                    'error_message': 'Destination host unreachable'
+                }
             else:
+                # None means timeout
                 result = {
                     'success': False,
                     'response_time_ms': None,
@@ -166,14 +177,25 @@ class PingExecutor:
         try:
             response_time = ping3.ping(ip_address, timeout=self.ping_timeout)
             
-            if response_time is not None:
+            # CRITICAL FIX: ping3 returns False for "Destination host unreachable"
+            # We MUST check if response_time is a number (float), not just "not None"
+            if response_time is not None and response_time is not False and isinstance(response_time, (int, float)):
                 result = {
                     'success': True,
                     'response_time_ms': round(response_time * 1000, 2),
                     'latency_ms': round(response_time * 1000, 2),
                     'error_message': None
                 }
+            elif response_time is False:
+                # False means "Destination host unreachable"
+                result = {
+                    'success': False,
+                    'response_time_ms': None,
+                    'latency_ms': None,
+                    'error_message': 'Destination host unreachable'
+                }
             else:
+                # None means timeout
                 result = {
                     'success': False,
                     'response_time_ms': None,

@@ -5,6 +5,7 @@ from app.routes.watzap_routes import get_watzap_service
 from config import Config
 import atexit
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -14,15 +15,25 @@ app = create_app()
 
 # Initialize Multi-Ping Monitoring Service
 config = Config()
-monitoring_service = get_multi_ping_service(config)
+monitoring_service = get_multi_ping_service(config, app=app)
 service_name = "Multi-Ping Monitoring Service"
 
 # Initialize Watzap Service only (WhatsApp Selenium disabled)
 watzap_service = None
 
+# Check if running in Flask reloader (prevent duplicate services)
+IS_RELOADER_PROCESS = os.environ.get('WERKZEUG_RUN_MAIN') != 'true'
+
 def initialize_services():
     """Initialize all services"""
     global monitoring_service, watzap_service
+    
+    # Skip initialization in reloader process (only run in main process)
+    if IS_RELOADER_PROCESS:
+        logger.info("⏭️  Skipping service initialization in reloader process")
+        return
+    
+    logger.info("🚀 Initializing services in main process...")
     
     # Initialize Multi-Ping Service
     if monitoring_service:
@@ -65,6 +76,10 @@ def initialize_services():
 
 def cleanup_services():
     """Cleanup all services"""
+    # Skip cleanup in reloader process
+    if IS_RELOADER_PROCESS:
+        return
+    
     if monitoring_service:
         monitoring_service.stop()
         print(f"🛑 {service_name} stopped")

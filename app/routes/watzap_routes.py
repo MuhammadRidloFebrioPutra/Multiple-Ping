@@ -59,7 +59,7 @@ def send_message():
     
     Body:
     {
-        "group_id": "120363404926282780@g.us",  // optional, default group if not provided
+        "group_id": "120363404923763535@g.us",  // optional, default group if not provided
         "message": "Your message here"
     }
     """
@@ -84,6 +84,38 @@ def send_message():
         logger.error(f"Error sending message: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@watzap_bp.route('/watzap/send-personal', methods=['POST'])
+def send_personal_message():
+    """
+    Send message to personal WhatsApp number
+    
+    Body:
+    {
+        "phone_no": "6282139934994",  // or "+62 821-3993-4994"
+        "message": "Your message here"
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'message' not in data or 'phone_no' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "Missing 'phone_no' or 'message' field"
+            }), 400
+        
+        phone_no = data['phone_no']
+        message = data['message']
+        
+        service = get_watzap_service()
+        result = service.send_message_to_personal(phone_no, message)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error sending personal message: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @watzap_bp.route('/watzap/timeout-alert', methods=['POST'])
 def send_timeout_alert():
     """
@@ -99,7 +131,7 @@ def send_timeout_alert():
         "consecutive_timeouts": 15,
         "first_timeout": "2025-10-20 10:00:00",
         "last_timeout": "2025-10-20 10:15:00",
-        "group_ids": ["120363404926282780@g.us"]  // optional
+        "group_ids": ["120363404923763535@g.us"]  // optional
     }
     """
     try:
@@ -134,7 +166,7 @@ def broadcast_message():
     Body:
     {
         "message": "Your message here",
-        "group_ids": ["120363404926282780@g.us", "another_group@g.us"]  // optional
+        "group_ids": ["120363404923763535@g.us", "another_group@g.us"]  // optional
     }
     """
     try:
