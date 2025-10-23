@@ -11,13 +11,30 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def format_indonesian_date(dt: datetime) -> str:
+    """
+    Format datetime ke format Indonesia: 21 Oktober 2025
+    """
+    bulan_indonesia = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
+        5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
+        9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }
+    
+    hari = dt.day
+    bulan = bulan_indonesia[dt.month]
+    tahun = dt.year
+    jam = dt.strftime('%H:%M:%S')
+    
+    return f"{hari} {bulan} {tahun} {jam}"
+
 class WatzapAPI:
     """Class untuk menangani komunikasi dengan Watzap API"""
     
     # Default API Key, Device Key, dan Group ID
     DEFAULT_API_KEY = "V3ELWOCBWBWHDEMX"
     DEFAULT_NUMBER_KEY = "TjAV4PteKJFfLQf6"  # Device key dari Watzap
-    DEFAULT_GROUP_ID = "120363404926282796@g.us"
+    DEFAULT_GROUP_ID = "120363406944056502@g.us"
     
     def __init__(self, api_key: Optional[str] = None, number_key: Optional[str] = None):
         self.api_key = api_key or os.getenv('WATZAP_API_KEY', self.DEFAULT_API_KEY)
@@ -193,12 +210,12 @@ class WatzapAPI:
                 "message": f"Gagal cek status: {str(e)}"
             }
 
-def send_timeout_alert_to_groups(device_data: Dict, group_ids: List[str]) -> Dict:
+def send_batch_timeout_alert_to_groups(devices_data: List[Dict], group_ids: List[str]) -> Dict:
     """
-    Kirim alert timeout perangkat ke WhatsApp groups
+    Kirim alert timeout untuk multiple devices dalam satu pesan (BATCH)
     
     Args:
-        device_data: Data perangkat yang timeout
+        devices_data: List data perangkat yang timeout
         group_ids: List ID group WhatsApp tujuan
         
     Returns:
@@ -206,37 +223,57 @@ def send_timeout_alert_to_groups(device_data: Dict, group_ids: List[str]) -> Dic
     """
     watzap = WatzapAPI()
     
-    # Format pesan timeout alert
-    alert_message = f"""🚨 PERINGATAN TIMEOUT PERANGKAT 🚨
+    # Format pesan batch alert
+    alert_message = f"""🚨 PERINGATAN TIMEOUT JUMLAH PERANGKAT  {len(devices_data)} 🚨 
 
-⚠️ KRITIS: Perangkat Tidak Dapat Dijangkau!
-
-📍 Informasi Perangkat:
-• Alamat IP: {device_data.get('ip_address', 'Tidak diketahui')}
-• Hostname: {device_data.get('hostname', 'Tidak diketahui')}
-• ID Perangkat: {device_data.get('device_id', 'Tidak diketahui')}
-• Merk/Model: {device_data.get('merk', 'Tidak diketahui')}
-• Kondisi Perangkat: {device_data.get('kondisi', 'Tidak diketahui')}
-
-⏰ Detail Timeout:
-• Jumlah Timeout Berturut-turut: {device_data.get('consecutive_timeouts', 'Tidak diketahui')}
-• Timeout Pertama: {device_data.get('first_timeout', 'Tidak diketahui')}
-• Pemeriksaan Terakhir: {device_data.get('last_timeout', 'Tidak diketahui')}
-
+📋 Daftar Perangkat Bermasalah:
+"""
+    for idx, device in enumerate(devices_data, 1):
+        alert_message += f"""
+{idx}. {device.get('hostname', 'Unknown')}
+   • IP: {device.get('ip_address', 'Unknown')}
+"""
+    
+    alert_message += f"""
 🔧 Tindakan yang Harus Dilakukan:
-1. Periksa daya dan koneksi jaringan perangkat
-2. Pastikan koneksi ke jaringan {device_data.get('ip_address', '')}
+1. Periksa status semua perangkat di atas
+2. Verifikasi koneksi jaringan dan daya
 3. Lakukan pemeriksaan fisik jika diperlukan
-4. Hubungi tim teknis jika masalah belum teratasi
+4. Hubungi tim teknis untuk penanganan lebih lanjut
 
-Waktu Notifikasi: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')} WIB
+Waktu Notifikasi: {format_indonesian_date(datetime.now())} WIB
 
-Pesan ini dikirim otomatis oleh Sistem Monitoring Pelindo."""
+Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
     
-    # Kirim broadcast
-    result = watzap.send_broadcast_to_groups(group_ids, alert_message)
+    logging.info(f"📤 Sending BATCH alert for {len(devices_data)} devices")
     
-    return result
+    # Kirim broadcast ke groups
+    group_result = watzap.send_broadcast_to_groups(group_ids, alert_message)
+    
+    # Kirim juga ke nomor personal admin
+    admin_phone = "6281235564216"
+    personal_result = watzap.send_message_to_personal(admin_phone, alert_message)
+    
+    # Gabungkan hasil
+    total_success = group_result.get('success_count', 0)
+    total_failed = group_result.get('failed_count', 0)
+    
+    if personal_result.get('status') == 'success':
+        total_success += 1
+        logging.info(f"✅ BATCH alert berhasil dikirim ke nomor admin: {admin_phone}")
+    else:
+        total_failed += 1
+        logging.error(f"❌ BATCH alert gagal dikirim ke nomor admin: {admin_phone}")
+    
+    return {
+        'status': 'success' if total_success > 0 else 'error',
+        'message': f'BATCH Alert dikirim ke {total_success} penerima untuk {len(devices_data)} devices',
+        'success_count': total_success,
+        'failed_count': total_failed,
+        'devices_count': len(devices_data),
+        'group_result': group_result,
+        'personal_result': personal_result
+    }
 
 def load_group_ids_from_file(file_path: str) -> List[str]:
     """
@@ -269,13 +306,3 @@ def load_group_ids_from_file(file_path: str) -> List[str]:
     except Exception as e:
         logging.error(f"Error loading group IDs dari {file_path}: {e}")
         return []
-
-# Contoh penggunaan
-if __name__ == "__main__":
-    # Inisialisasi Watzap API
-    watzap = WatzapAPI()
-    
-    # Cek status koneksi
-    status = watzap.check_connection_status()
-    print("Status Koneksi:", status)
-    

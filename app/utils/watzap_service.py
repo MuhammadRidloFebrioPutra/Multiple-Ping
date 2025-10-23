@@ -4,7 +4,7 @@ Terpisah dari whatsapp_service.py (legacy Selenium)
 """
 import logging
 from typing import Dict, List, Optional
-from app.utils.watzap import WatzapAPI, send_timeout_alert_to_groups, load_group_ids_from_file
+from app.utils.watzap import WatzapAPI, send_batch_timeout_alert_to_groups, load_group_ids_from_file
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class WatzapService:
         except Exception as e:
             logger.error(f"Error sending message via Watzap: {e}")
             return {"status": "error", "message": str(e)}
-    
+       
     def send_timeout_alert(self, device_data: Dict, group_ids: Optional[List[str]] = None) -> Dict:
         """
         Kirim alert timeout perangkat
@@ -66,7 +66,7 @@ class WatzapService:
             logger.info(f"   Target groups: {group_ids}")
             logger.info(f"   Device data: IP={device_data.get('ip_address')}, Device ID={device_data.get('device_id')}, Timeouts={device_data.get('consecutive_timeouts')}")
             
-            result = send_timeout_alert_to_groups(device_data, group_ids)
+            result = send_batch_timeout_alert_to_groups([device_data], group_ids)
             
             logger.info(f"📬 Watzap alert result: Status={result.get('status')}, Success={result.get('success_count', 0)}/{len(group_ids)}")
             if result.get('status') == 'success':
