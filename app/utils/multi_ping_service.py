@@ -22,8 +22,9 @@ class MultiPingService:
     Menggunakan modular components untuk database monitoring, CSV management, dan ping execution
     """
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, app=None):
         self.config = config
+        self.app = app  # Store Flask app for database context
         self.running = False
         self.thread = None
         
@@ -35,7 +36,7 @@ class MultiPingService:
         # Initialize timeout tracker if enabled
         self.timeout_tracker = None
         if getattr(config, 'ENABLE_TIMEOUT_TRACKING', True):
-            self.timeout_tracker = TimeoutTracker(config)
+            self.timeout_tracker = TimeoutTracker(config, app=self.app)
             logger.info("Timeout tracking enabled")
         
         # Add ping cycle control to prevent double pings
@@ -316,11 +317,11 @@ class MultiPingService:
 # Global instance
 multi_ping_service = None
 
-def get_multi_ping_service(config: Config = None) -> MultiPingService:
+def get_multi_ping_service(config: Config = None, app=None) -> MultiPingService:
     """
     Get singleton instance of multi-ping service
     """
     global multi_ping_service
     if multi_ping_service is None and config:
-        multi_ping_service = MultiPingService(config)
+        multi_ping_service = MultiPingService(config, app=app)
     return multi_ping_service

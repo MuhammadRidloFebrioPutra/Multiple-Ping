@@ -42,8 +42,13 @@ class Config:
     
     # WhatsApp Alert Configuration for Timeout
     ENABLE_WHATSAPP_TIMEOUT_ALERTS = os.getenv('ENABLE_WHATSAPP_TIMEOUT_ALERTS', 'true').lower() == 'true'
-    WHATSAPP_TIMEOUT_THRESHOLD = int(os.getenv('WHATSAPP_TIMEOUT_THRESHOLD', '15'))  # Send WA after 20 consecutive timeouts
+    WHATSAPP_TIMEOUT_THRESHOLD = int(os.getenv('WHATSAPP_TIMEOUT_THRESHOLD', '5'))  # Send WA after 20 consecutive timeouts
     WHATSAPP_COOLDOWN_MINUTES = int(os.getenv('WHATSAPP_COOLDOWN_MINUTES', '60'))  # Cooldown between alerts for same device
+    
+    # Incident Creation Configuration
+    ENABLE_INCIDENT_CREATION = os.getenv('ENABLE_INCIDENT_CREATION', 'true').lower() == 'true'
+    INCIDENT_THRESHOLD_MINUTES = int(os.getenv('INCIDENT_THRESHOLD_MINUTES', '60'))  # Create incident after 60 minutes (1 hour) of timeout
+    INCIDENT_CHECK_INTERVAL_MINUTES = int(os.getenv('INCIDENT_CHECK_INTERVAL_MINUTES', '10'))  # Check for incidents every 10 minutes
     
     # Database monitoring configuration
     DEVICE_CHECK_INTERVAL = int(os.getenv('DEVICE_CHECK_INTERVAL', '30'))  # Check database every 30 seconds

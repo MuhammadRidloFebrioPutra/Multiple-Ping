@@ -15,7 +15,7 @@ app = create_app()
 
 # Initialize Multi-Ping Monitoring Service
 config = Config()
-monitoring_service = get_multi_ping_service(config)
+monitoring_service = get_multi_ping_service(config, app=app)
 service_name = "Multi-Ping Monitoring Service"
 
 # Initialize Watzap Service only (WhatsApp Selenium disabled)

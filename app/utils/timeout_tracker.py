@@ -28,8 +28,9 @@ class TimeoutTracker:
     Class untuk mengelola tracking timeout berturut-turut per IP address
     """
     
-    def __init__(self, config):
+    def __init__(self, config, app=None):
         self.config = config
+        self.app = app  # Store Flask app for database context
         self.timeout_dir = getattr(config, 'CSV_OUTPUT_DIR', 'ping_results')
         self.timeout_filename = 'timeout_tracking.csv'
         self.timeout_csv_path = os.path.join(self.timeout_dir, self.timeout_filename)
@@ -41,6 +42,8 @@ class TimeoutTracker:
         self.whatsapp_threshold = getattr(config, 'WHATSAPP_TIMEOUT_THRESHOLD', 20)
         self.whatsapp_cooldown_minutes = getattr(config, 'WHATSAPP_COOLDOWN_MINUTES', 60)
         
+        # Incident Management Configuration
+        self.incident_enabled = getattr(config, 'ENABLE_INCIDENT_CREATION', True)
         
         # Ensure directory exists
         os.makedirs(self.timeout_dir, exist_ok=True)
@@ -59,6 +62,15 @@ class TimeoutTracker:
         # Initialize timeout analytics
         from app.utils.timeout_analytics import TimeoutAnalytics
         self.analytics = TimeoutAnalytics(config)
+        
+        # Initialize incident manager
+        if self.incident_enabled:
+            from app.utils.incident_manager import IncidentManager
+            self.incident_manager = IncidentManager(config, app=self.app)
+            logger.info(f"Incident Manager enabled (threshold: {self.incident_manager.incident_threshold_minutes} minutes)")
+        else:
+            self.incident_manager = None
+            logger.info("Incident Manager disabled")
         
         # Track previous timeout IPs for analytics
         self.previous_timeout_ips = set()
@@ -360,6 +372,7 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             
             processed_ips = set()
             devices_to_alert = []  # Collect devices that need alerts
+            recovered_ips = []  # Track recovered devices for incident cleanup
             
             for result in ping_results:
                 ip_address = result.get('ip_address')
@@ -411,6 +424,9 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                             logger.info(f"Removed {ip_address} from alerted list (fallback)")
                         else:
                             print(f"      ℹ️ Device pulih tanpa recovery notification (belum pernah di-alert)")
+                        
+                        # Track recovered IP for incident cleanup
+                        recovered_ips.append(ip_address)
                         
                         # Hapus dari timeout_data
                         del timeout_data[ip_address]
@@ -517,6 +533,16 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             
             # Write updated data back to CSV
             self._write_timeout_data(timeout_data)
+            
+            # Check and create incidents for devices that have been down for > 1 hour
+            if self.incident_manager and timeout_data:
+                created_incidents = self.incident_manager.check_and_create_incidents(timeout_data)
+                if created_incidents:
+                    logger.warning(f"📋 Created {len(created_incidents)} new incidents for prolonged timeouts")
+            
+            # Cleanup incident tracking for recovered devices
+            if self.incident_manager and recovered_ips:
+                self.incident_manager.cleanup_resolved_incidents(recovered_ips)
             
             # Record analytics snapshot
             updated_timeout_ips = set(timeout_data.keys())
