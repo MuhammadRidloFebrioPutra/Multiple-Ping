@@ -6,6 +6,7 @@ from typing import Dict
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from app.models.inventaris import Inventaris
+from app.models.jenis_barang import JenisBarang
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +36,18 @@ class DatabaseMonitor:
     def get_current_device_signature(self) -> str:
         """
         Generate signature untuk current device list di database
+        Join dengan jenis_barangs untuk filter berdasarkan ping = 1
         """
         session = self.Session()
         try:
-            devices = session.query(Inventaris).filter(
+            # Join dengan jenis_barangs dan filter hanya yang bisa di-ping
+            devices = session.query(Inventaris).join(
+                JenisBarang, Inventaris.jenis_barang_id == JenisBarang.id
+            ).filter(
                 Inventaris.kondisi != 'hilang',
                 Inventaris.ip.isnot(None),
-                Inventaris.ip != ''
+                Inventaris.ip != '',
+                JenisBarang.ping == 1  # Filter: hanya yang bisa di-ping
             ).order_by(Inventaris.id).all()
             
             # Create signature dari device list
@@ -95,14 +101,19 @@ class DatabaseMonitor:
     def reload_device_list(self) -> int:
         """
         Reload device list dari database
+        Join dengan jenis_barangs untuk filter berdasarkan ping = 1
         Returns jumlah devices yang ditemukan
         """
         session = self.Session()
         try:
-            devices = session.query(Inventaris).filter(
+            # Join dengan jenis_barangs dan filter hanya yang bisa di-ping
+            devices = session.query(Inventaris).join(
+                JenisBarang, Inventaris.jenis_barang_id == JenisBarang.id
+            ).filter(
                 Inventaris.kondisi != 'hilang',
                 Inventaris.ip.isnot(None),
-                Inventaris.ip != ''
+                Inventaris.ip != '',
+                JenisBarang.ping == 1  # Filter: hanya yang bisa di-ping
             ).all()
             
             # Update device cache dengan device list baru
@@ -122,14 +133,14 @@ class DatabaseMonitor:
             self.device_cache['devices'] = device_dict
             new_count = len(device_dict)
             
-            logger.info(f"Device list reloaded: {old_count} -> {new_count} devices")
+            logger.info(f"Device list reloaded: {old_count} -> {new_count} devices (ping enabled only)")
             
             # Log specific changes
             if old_count != new_count:
                 if new_count > old_count:
-                    logger.info(f"Added {new_count - old_count} new devices")
+                    logger.info(f"Added {new_count - old_count} new pingable devices")
                 else:
-                    logger.info(f"Removed {old_count - new_count} devices")
+                    logger.info(f"Removed {old_count - new_count} devices from ping list")
             
             return new_count
             
@@ -141,14 +152,17 @@ class DatabaseMonitor:
     
     def get_device_count(self) -> int:
         """
-        Get total number of active devices
+        Get total number of active devices (ping enabled only)
         """
         session = self.Session()
         try:
-            count = session.query(Inventaris).filter(
+            count = session.query(Inventaris).join(
+                JenisBarang, Inventaris.jenis_barang_id == JenisBarang.id
+            ).filter(
                 Inventaris.kondisi != 'hilang',
                 Inventaris.ip.isnot(None),
-                Inventaris.ip != ''
+                Inventaris.ip != '',
+                JenisBarang.ping == 1  # Filter: hanya yang bisa di-ping
             ).count()
             return count
         except Exception as e:
@@ -159,14 +173,17 @@ class DatabaseMonitor:
     
     def get_devices_from_database(self):
         """
-        Get all active devices from database
+        Get all active devices from database (ping enabled only)
         """
         session = self.Session()
         try:
-            devices = session.query(Inventaris).filter(
+            devices = session.query(Inventaris).join(
+                JenisBarang, Inventaris.jenis_barang_id == JenisBarang.id
+            ).filter(
                 Inventaris.kondisi != 'hilang',
                 Inventaris.ip.isnot(None),
-                Inventaris.ip != ''
+                Inventaris.ip != '',
+                JenisBarang.ping == 1  # Filter: hanya yang bisa di-ping
             ).all()
             return devices
         except Exception as e:
