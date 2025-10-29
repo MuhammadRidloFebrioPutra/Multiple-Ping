@@ -53,5 +53,9 @@ class Config:
     # Database monitoring configuration
     DEVICE_CHECK_INTERVAL = int(os.getenv('DEVICE_CHECK_INTERVAL', '30'))  # Check database every 30 seconds
     
+    # Shift Report Configuration
+    ENABLE_SHIFT_REPORT = os.getenv('ENABLE_SHIFT_REPORT', 'true').lower() == 'true'
+    SHIFT_REPORT_GROUP = os.getenv('SHIFT_REPORT_GROUP', None)  # WhatsApp group untuk laporan shift
+    
     SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')
     DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
