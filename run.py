@@ -2,6 +2,7 @@ from app import create_app
 from app.utils.multi_ping_service import get_multi_ping_service
 # from app.routes.whatsapp_routes import get_whatsapp_service  # DISABLED - Menggunakan Watzap
 from app.routes.watzap_routes import get_watzap_service
+from app.utils.laporan_shift import get_laporan_shift_service
 from config import Config
 import atexit
 import logging
@@ -21,12 +22,15 @@ service_name = "Multi-Ping Monitoring Service"
 # Initialize Watzap Service only (WhatsApp Selenium disabled)
 watzap_service = None
 
+# Initialize Laporan Shift Service
+laporan_shift_service = None
+
 # Check if running in Flask reloader (prevent duplicate services)
 IS_RELOADER_PROCESS = os.environ.get('WERKZEUG_RUN_MAIN') != 'true'
 
 def initialize_services():
     """Initialize all services"""
-    global monitoring_service, watzap_service
+    global monitoring_service, watzap_service, laporan_shift_service
     
     # Skip initialization in reloader process (only run in main process)
     if IS_RELOADER_PROCESS:
@@ -73,6 +77,28 @@ def initialize_services():
     except Exception as e:
         print(f"❌ Failed to initialize Watzap service: {e}")
         watzap_service = None
+    
+    # Initialize Laporan Shift Service
+    try:
+        laporan_shift_service = get_laporan_shift_service(config, watzap_service, app)
+        if laporan_shift_service and config.ENABLE_SHIFT_REPORT:
+            laporan_shift_service.start()
+            print("✅ Laporan Shift Service started")
+            print(f"   - Report schedule: 08:00, 16:00, 00:00")
+            print(f"   - Target group: {config.SHIFT_REPORT_GROUP or 'Broadcast'}")
+            
+            status = laporan_shift_service.get_status()
+            next_reports = status.get('next_reports', [])
+            if next_reports:
+                print(f"   - Next reports:")
+                for report_time in next_reports:
+                    print(f"     • {report_time}")
+        else:
+            print("ℹ️  Laporan Shift Service disabled")
+            
+    except Exception as e:
+        print(f"❌ Failed to initialize Laporan Shift service: {e}")
+        laporan_shift_service = None
 
 def cleanup_services():
     """Cleanup all services"""
@@ -88,6 +114,10 @@ def cleanup_services():
     
     if watzap_service:
         print("🛑 Watzap Service stopped")
+    
+    if laporan_shift_service:
+        laporan_shift_service.stop()
+        print("🛑 Laporan Shift Service stopped")
 
 # Register cleanup function
 atexit.register(cleanup_services)
