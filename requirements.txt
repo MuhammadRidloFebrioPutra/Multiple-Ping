@@ -1,19 +1,33 @@
-gunicorn
+
 Flask
-python-dotenv
 Flask-SQLAlchemy
-PyMySQL
-ping3
-sqlalchemy
-numpy
-selenium
-fake_useragent
-undetected_chromedriver
-setuptools
-webdriver_manager
-pyperclip
-numpy
 Flask-Cors
+gunicorn
+
+# Database
+PyMySQL
+sqlalchemy
+
+# Environment & Configuration
+python-dotenv
+
+# Network & Monitoring
+ping3
+requests
+
+# WhatsApp Automation (Selenium-based)
+selenium
+undetected-chromedriver
+webdriver-manager
+fake-useragent
+pyperclip
+
+# Data Processing
+numpy
+
+# Server & Concurrency
 gevent
 eventlet
-requests
+
+# Utilities
+setuptools
