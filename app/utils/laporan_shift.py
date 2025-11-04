@@ -133,6 +133,7 @@ class LaporanShiftService:
     def format_laporan_message(self, shift_name: str, start_time: datetime, end_time: datetime, log_data: List[Dict]) -> str:
         """
         Format laporan message for WhatsApp
+        Group activities by nama_tugas (nama_kegiatan) instead of by user
         """
         message = f"📊 *LAPORAN {shift_name.upper()}*\n"
         message += f"{'='*40}\n\n"
@@ -143,32 +144,27 @@ class LaporanShiftService:
         else:
             message += f"{'='*40}\n\n"
             
-            # Group by user
-            user_activities = {}
+            # Group by nama_tugas (nama_kegiatan)
+            activity_groups = {}
             for log in log_data:
-                user_name = log.get('user_name', 'Unknown')
-                if user_name not in user_activities:
-                    user_activities[user_name] = []
-                user_activities[user_name].append(log)
+                nama_tugas = log.get('nama_tugas', 'Aktivitas Lainnya')
+                if nama_tugas not in activity_groups:
+                    activity_groups[nama_tugas] = []
+                activity_groups[nama_tugas].append(log)
             
-            # Format per user
-            for idx, (user_name, activities) in enumerate(user_activities.items(), 1):
-                message += f"*{user_name}* ({len(activities)} aktivitas)\n"
-                message += f"{'-'*40}\n"
+            # Format per activity group
+            for idx, (nama_tugas, logs) in enumerate(activity_groups.items(), 1):
+                message += f"*{idx}. {nama_tugas}*\n"
                 
-                for i, activity in enumerate(activities, 1):
-                    created_at = activity.get('created_at')
-                    time_str = created_at.strftime('%H:%M:%S') if created_at else 'N/A'
+                # Show all catatan and catatan_petugas for this activity
+                for log in logs:
+                    if log.get('catatan'):
+                        message += f"   📌 {log.get('catatan')}\n"
                     
-                    message += f"\n*{i}. {activity.get('nama_tugas', 'N/A')}*\n"
-                    
-                    if activity.get('catatan'):
-                        message += f"   📌 Catatan: {activity.get('catatan')}\n"
-                    
-                    if activity.get('catatan_petugas'):
-                        message += f"   🔧 Catatan Petugas: {activity.get('catatan_petugas')}\n"
+                    if log.get('catatan_petugas'):
+                        message += f"   🔧 Keterangan: {log.get('catatan_petugas')}\n"
                 
-                message += f"\n{'-'*40}\n\n"
+                message += f"\n"
         
         message += f"{'='*40}\n"
         message += f"Laporan digenerate otomatis oleh sistematis\n"
