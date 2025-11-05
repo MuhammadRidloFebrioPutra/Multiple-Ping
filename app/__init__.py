@@ -20,11 +20,11 @@ def create_app(config_class=Config):
     from app.routes.watzap_routes import watzap_bp
     
     # Register all blueprints
-    app.register_blueprint(ping_basic_bp, url_prefix='/api')
-    app.register_blueprint(ping_service_bp, url_prefix='/api')
-    app.register_blueprint(ping_timeout_bp, url_prefix='/api')
-    app.register_blueprint(ping_analytics_bp, url_prefix='/api')
-    # app.register_blueprint(whatsapp_bp, url_prefix='/api')  # DISABLED - Using Watzap only
-    app.register_blueprint(watzap_bp, url_prefix='/api')
+    app.register_blueprint(ping_basic_bp, url_prefix='/api/monitoring')
+    app.register_blueprint(ping_service_bp, url_prefix='/api/monitoring')
+    app.register_blueprint(ping_timeout_bp, url_prefix='/api/monitoring')
+    app.register_blueprint(ping_analytics_bp, url_prefix='/api/monitoring')
+    # app.register_blueprint(whatsapp_bp, url_prefix='/api/monitoring')  # DISABLED - Using Watzap only
+    app.register_blueprint(watzap_bp, url_prefix='/api/monitoring')
     
     return app
