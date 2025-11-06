@@ -31,3 +31,5 @@ eventlet
 
 # Utilities
 setuptools
+
+cryptography
