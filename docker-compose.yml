@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: multiple-ping:web
+    container_name: multiple-ping-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount project for easier development (optional). In production you can remove the volume to use the built image contents.
+      - ./:/app
+      - ./ping_results:/app/ping_results
+    working_dir: /app
