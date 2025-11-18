@@ -34,7 +34,7 @@ class WatzapAPI:
     # Default API Key, Device Key, dan Group ID
     DEFAULT_API_KEY = "V3ELWOCBWBWHDEMX"
     DEFAULT_NUMBER_KEY = "TjAV4PteKJFfLQf6"  # Device key dari Watzap
-    DEFAULT_GROUP_ID = "120363406944056502@g.us"
+    DEFAULT_GROUP_ID = "120363403677027364@g.us"
     
     def __init__(self, api_key: Optional[str] = None, number_key: Optional[str] = None):
         self.api_key = api_key or os.getenv('WATZAP_API_KEY', self.DEFAULT_API_KEY)
@@ -59,7 +59,7 @@ class WatzapAPI:
         Kirim pesan ke WhatsApp group
         
         Args:
-            group_id: ID group WhatsApp (format: 120363xxxxx@g.us)
+            group_id: ID group WhatsApp (format: 120363403677027364@g.us)
             message: Pesan yang akan dikirim
             
         Returns:

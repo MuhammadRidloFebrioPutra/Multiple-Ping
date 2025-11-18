@@ -486,7 +486,7 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                 
                 print("")
                 print("📲 Mengirim ke:")
-                print("   • WhatsApp Group: 120363404923763535@g.us")
+                print("   • WhatsApp Group: 120363403677027364@g.us")
                 print("")
                 
                 # Always use batch mode for consistent formatting
