@@ -59,7 +59,7 @@ def send_message():
     
     Body:
     {
-        "group_id": "120363404923763535@g.us",  // optional, default group if not provided
+        "group_id": "120363403677027364@g.us",  // optional, default group if not provided
         "message": "Your message here"
     }
     """
@@ -131,7 +131,7 @@ def send_timeout_alert():
         "consecutive_timeouts": 15,
         "first_timeout": "2025-10-20 10:00:00",
         "last_timeout": "2025-10-20 10:15:00",
-        "group_ids": ["120363404923763535@g.us"]  // optional
+        "group_ids": ["120363403677027364@g.us"]  // optional
     }
     """
     try:
@@ -166,7 +166,7 @@ def broadcast_message():
     Body:
     {
         "message": "Your message here",
-        "group_ids": ["120363404923763535@g.us", "another_group@g.us"]  // optional
+        "group_ids": ["120363403677027364@g.us", "another_group@g.us"]  // optional
     }
     """
     try:
