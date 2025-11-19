@@ -33,12 +33,12 @@ class Config:
     MAX_CSV_RECORDS = int(os.getenv('MAX_CSV_RECORDS', '1000'))  # Maximum records per CSV file
     
     # Multi-ping configuration
-    MAX_PING_WORKERS = int(os.getenv('MAX_PING_WORKERS', '20'))  # Max concurrent ping threads
+    MAX_PING_WORKERS = int(os.getenv('MAX_PING_WORKERS', '50'))  # Max concurrent ping threads
     PING_TIMEOUT = int(os.getenv('PING_TIMEOUT', '3'))  # Ping timeout in seconds
     
     # Timeout tracking configuration
     ENABLE_TIMEOUT_TRACKING = os.getenv('ENABLE_TIMEOUT_TRACKING', 'true').lower() == 'true'
-    TIMEOUT_CRITICAL_THRESHOLD = int(os.getenv('TIMEOUT_CRITICAL_THRESHOLD', '5'))  # Critical consecutive timeouts
+    TIMEOUT_CRITICAL_THRESHOLD = int(os.getenv('TIMEOUT_CRITICAL_THRESHOLD', '15'))  # Critical consecutive timeouts
     
     # WhatsApp Alert Configuration for Timeout
     ENABLE_WHATSAPP_TIMEOUT_ALERTS = os.getenv('ENABLE_WHATSAPP_TIMEOUT_ALERTS', 'true').lower() == 'true'
