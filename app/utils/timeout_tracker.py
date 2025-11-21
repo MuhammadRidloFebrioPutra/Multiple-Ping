@@ -428,6 +428,13 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             alerted_data = self._read_alerted_list()
             current_time = datetime.now().isoformat()
             
+            # DEBUG: Log what was read from CSV
+            logger.info(f"📖 Read from CSV: {len(timeout_data)} timeout entries, {len(alerted_data)} alerted")
+            if timeout_data:
+                sample_read = list(timeout_data.values())[:3]
+                for dev in sample_read:
+                    logger.info(f"   • CSV data: {dev.get('hostname')} ({dev.get('ip_address')}): {dev.get('consecutive_timeouts')}x")
+            
             # Print summary at start
             print(f"\n⏱️  Timeout Tracking Cycle - {datetime.now().strftime('%H:%M:%S')}")
             print(f"   📊 Status: {len(timeout_data)} device timeout, {len(alerted_data)} sudah di-alert")
@@ -504,13 +511,16 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                         new_count = current_count + 1
                         hostname = timeout_data[ip_address].get('hostname', ip_address)
                         
+                        # DEBUG: Log before update
+                        logger.info(f"📈 Updating timeout: {hostname} ({ip_address}) {current_count}x → {new_count}x")
+                        
                         timeout_data[ip_address]['consecutive_timeouts'] = str(new_count)
                         timeout_data[ip_address]['last_timeout'] = current_time
                         timeout_data[ip_address]['last_updated'] = current_time
                         
                         # Log timeout progression
                         is_alerted = ip_address in alerted_data
-                        logger.debug(f"Device {hostname} ({ip_address}) timeout count: {new_count}x (alerted: {is_alerted})")
+                        logger.info(f"Device {hostname} ({ip_address}) timeout count: {new_count}x (alerted: {is_alerted})")
                         
                         # Check if WhatsApp alert should be sent (pass alerted_data to avoid re-reading file)
                         if self._should_send_whatsapp_alert(ip_address, new_count, alerted_data):
@@ -518,6 +528,9 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                             devices_to_alert.append(timeout_data[ip_address])
                     else:
                         # Add new entry
+                        hostname = result.get('hostname', ip_address)
+                        logger.info(f"🆕 New timeout device: {hostname} ({ip_address}) - starting at 1x")
+                        
                         timeout_data[ip_address] = {
                             'ip_address': ip_address,
                             'hostname': result.get('hostname', ''),
@@ -530,7 +543,7 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                             'last_timeout': current_time,
                             'last_updated': current_time,
                         }
-                        logger.debug(f"Added {ip_address} to timeout tracking (first timeout)")
+                        logger.info(f"Added {ip_address} to timeout tracking (first timeout)")
             
             # Always send alerts in BATCH mode (even for single device)
             if devices_to_alert:
@@ -577,11 +590,12 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             else:
                 logger.debug(f"No devices reached alert threshold ({self.whatsapp_threshold}x) in this cycle")
             
-            # Remove entries for IPs that are no longer being monitored
-            stale_ips = set(timeout_data.keys()) - processed_ips
-            for stale_ip in stale_ips:
-                del timeout_data[stale_ip]
-                logger.debug(f"Removed stale IP {stale_ip} from timeout tracking")
+            # IMPORTANT: DO NOT remove stale_ips here!
+            # Devices in timeout_data must stay until they recover (ping success)
+            # Removing them here causes timeout counter to reset to 1 repeatedly
+            # Only remove when:
+            # 1. Device recovers (ping success) - handled above
+            # 2. Device permanently removed from inventory (not in this function)
             
             # JANGAN hapus dari alerted_data di sini!
             # Device hanya dihapus dari alerted_data jika:
@@ -592,8 +606,16 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             self._write_alerted_list(alerted_data)
             logger.debug(f"Updated {len(alerted_data)} alerted devices in CSV")
             
+            # DEBUG: Log before writing to CSV
+            logger.info(f"💾 Writing {len(timeout_data)} timeout entries to CSV")
+            if timeout_data:
+                sample_devices = list(timeout_data.values())[:3]  # Log first 3 devices
+                for dev in sample_devices:
+                    logger.info(f"   • {dev.get('hostname')} ({dev.get('ip_address')}): {dev.get('consecutive_timeouts')}x")
+            
             # Write updated data back to CSV
             self._write_timeout_data(timeout_data)
+            logger.info(f"✅ CSV write completed")
             
             # Check and create incidents for devices that have been down for > 1 hour
             if self.incident_manager and timeout_data:
