@@ -158,6 +158,9 @@ class TimeoutTracker:
     def _write_timeout_data(self, timeout_data: Dict[str, Dict]):
         """Write timeout data to CSV with file locking and atomic write"""
         with self._timeout_file_lock:  # Thread lock
+            # CRITICAL: Also lock the ACTUAL CSV file during entire operation
+            # This prevents other processes from reading while we're updating
+            lock_file = None
             try:
                 # CRITICAL SAFETY CHECK: Don't clear non-empty CSV!
                 # This prevents race condition where empty data overwrites valid data
@@ -174,6 +177,13 @@ class TimeoutTracker:
                             return  # ABORT write - preserve existing data!
                     except Exception as check_err:
                         logger.error(f"Error checking CSV size: {check_err}")
+                
+                # CRITICAL FIX: Lock the actual CSV file BEFORE starting write operation
+                # This prevents other processes from reading stale data during update
+                if os.path.exists(self.timeout_csv_path):
+                    lock_file = open(self.timeout_csv_path, 'r+')
+                    self._lock_file(lock_file)
+                    logger.debug("🔒 Locked actual CSV file for write operation")
                 
                 # Atomic write: write to temp file first, then rename
                 temp_path = self.timeout_csv_path + '.tmp'
@@ -203,6 +213,14 @@ class TimeoutTracker:
                 
                 # Atomic rename (atomic operation on Unix/Linux)
                 os.replace(temp_path, self.timeout_csv_path)
+                
+                # CRITICAL: Ensure file system sync (especially important on CentOS)
+                try:
+                    import time
+                    time.sleep(0.01)  # 10ms delay for FS sync
+                except:
+                    pass
+                
                 logger.debug(f"Written {len(timeout_data)} timeout entries to CSV (atomic)")
                 
                 # VALIDATION: Verify write succeeded
@@ -217,9 +235,19 @@ class TimeoutTracker:
             except Exception as e:
                 logger.error(f"Error writing timeout CSV: {e}")
                 # Cleanup temp file if exists
+                temp_path = self.timeout_csv_path + '.tmp'
                 if os.path.exists(temp_path):
                     try:
                         os.remove(temp_path)
+                    except:
+                        pass
+            finally:
+                # CRITICAL: Release lock on actual CSV file
+                if lock_file:
+                    try:
+                        self._unlock_file(lock_file)
+                        lock_file.close()
+                        logger.debug("🔓 Released lock on actual CSV file")
                     except:
                         pass
 
