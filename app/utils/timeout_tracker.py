@@ -428,16 +428,22 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             alerted_data = self._read_alerted_list()
             current_time = datetime.now().isoformat()
             
+            # CHECKPOINT: Store initial count for validation later
+            initial_timeout_count = len(timeout_data)
+            
             # DEBUG: Log what was read from CSV
             logger.info(f"📖 Read from CSV: {len(timeout_data)} timeout entries, {len(alerted_data)} alerted")
             if timeout_data:
-                sample_read = list(timeout_data.values())[:3]
-                for dev in sample_read:
-                    logger.info(f"   • CSV data: {dev.get('hostname')} ({dev.get('ip_address')}): {dev.get('consecutive_timeouts')}x")
+                logger.info(f"📋 Timeout devices in CSV:")
+                for ip, dev in timeout_data.items():
+                    logger.info(f"   • {dev.get('hostname')} ({ip}): {dev.get('consecutive_timeouts')}x")
+            else:
+                logger.info(f"   ℹ️  No timeout devices in CSV yet")
             
             # Print summary at start
             print(f"\n⏱️  Timeout Tracking Cycle - {datetime.now().strftime('%H:%M:%S')}")
             print(f"   📊 Status: {len(timeout_data)} device timeout, {len(alerted_data)} sudah di-alert")
+            print(f"   📊 ping_results contains: {len(ping_results)} devices")
             
             # Store current timeout IPs for analytics
             current_timeout_ips = set(timeout_data.keys())
@@ -446,6 +452,23 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             devices_to_alert = []  # Collect devices that need alerts
             recovered_ips = []  # Track recovered devices for incident cleanup
             
+            # CRITICAL FIX: Track which IPs are in current ping_results
+            # Devices NOT in ping_results should stay in timeout_data (don't remove them!)
+            current_ping_ips = set()
+            
+            # First pass: collect all IPs in this ping cycle
+            for result in ping_results:
+                ip = result.get('ip_address')
+                if ip:
+                    current_ping_ips.add(ip)
+            
+            logger.info(f"🎯 Current ping cycle contains {len(current_ping_ips)} IPs")
+            if current_ping_ips and len(current_ping_ips) <= 20:
+                logger.info(f"   IPs being pinged this cycle: {', '.join(sorted(current_ping_ips))}")
+            elif current_ping_ips:
+                logger.info(f"   IPs being pinged this cycle: {', '.join(sorted(list(current_ping_ips)[:20]))}... (showing first 20)")
+            
+            # Second pass: process ping results
             for result in ping_results:
                 ip_address = result.get('ip_address')
                 ping_success = result.get('ping_success', False)
@@ -590,12 +613,45 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             else:
                 logger.debug(f"No devices reached alert threshold ({self.whatsapp_threshold}x) in this cycle")
             
-            # IMPORTANT: DO NOT remove stale_ips here!
-            # Devices in timeout_data must stay until they recover (ping success)
-            # Removing them here causes timeout counter to reset to 1 repeatedly
-            # Only remove when:
-            # 1. Device recovers (ping success) - handled above
-            # 2. Device permanently removed from inventory (not in this function)
+            # CHECKPOINT: Verify data integrity before preservation logic
+            logger.info(f"🔍 CHECKPOINT: Before preservation - {len(timeout_data)} devices in timeout_data")
+            
+            # CRITICAL: Keep devices that were NOT in this ping cycle
+            # These devices are still in timeout state but weren't pinged in this cycle
+            # DO NOT remove them - they must stay until they recover (ping success)
+            devices_not_in_current_ping = set(timeout_data.keys()) - current_ping_ips
+            
+            if devices_not_in_current_ping:
+                logger.warning(f"🔄 PRESERVING {len(devices_not_in_current_ping)} devices NOT in current ping cycle:")
+                for ip in devices_not_in_current_ping:
+                    dev = timeout_data.get(ip, {})
+                    hostname = dev.get('hostname', ip)
+                    count = dev.get('consecutive_timeouts', '0')
+                    logger.warning(f"   • PRESERVE: {hostname} ({ip}): {count}x - NOT pinged this cycle, KEEPING in tracking")
+            else:
+                logger.info(f"ℹ️  All timeout devices were included in this ping cycle")
+            
+            # CHECKPOINT: Verify no data loss after preservation
+            logger.info(f"🔍 CHECKPOINT: After preservation - {len(timeout_data)} devices in timeout_data")
+            if initial_timeout_count > 0 and len(timeout_data) < initial_timeout_count:
+                lost_count = initial_timeout_count - len(timeout_data)
+                logger.warning(f"⚠️  Lost {lost_count} devices during processing!")
+                logger.warning(f"   Started: {initial_timeout_count}, Ended: {len(timeout_data)}")
+                logger.warning(f"   Recovered: {len(recovered_ips)} devices")
+                expected_remaining = initial_timeout_count - len(recovered_ips)
+                if len(timeout_data) != expected_remaining:
+                    logger.error(f"❌ Data loss detected! Expected {expected_remaining} but got {len(timeout_data)}")
+            
+            # VALIDATION: Ensure devices not in current ping are NOT removed
+            # This is the MOST CRITICAL part - devices should stay until ping SUCCESS
+            for ip in devices_not_in_current_ping:
+                if ip not in timeout_data:
+                    logger.error(f"❌ BUG DETECTED! Device {ip} was removed but should be preserved!")
+                    logger.error(f"   This is the root cause of counter reset issue!")
+            
+            # Only remove devices when:
+            # 1. Device recovers (ping success) - handled above in the loop
+            # 2. Device permanently removed from inventory (not handled here)
             
             # JANGAN hapus dari alerted_data di sini!
             # Device hanya dihapus dari alerted_data jika:
@@ -606,16 +662,31 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             self._write_alerted_list(alerted_data)
             logger.debug(f"Updated {len(alerted_data)} alerted devices in CSV")
             
-            # DEBUG: Log before writing to CSV
-            logger.info(f"💾 Writing {len(timeout_data)} timeout entries to CSV")
+            # DEBUG: Log COMPLETE data before writing to CSV
+            logger.info(f"💾 Preparing to write {len(timeout_data)} timeout entries to CSV")
+            
+            # CRITICAL VALIDATION CHECKPOINT
+            # If we read data earlier but now it's empty, something is WRONG!
+            if initial_timeout_count > 0 and len(timeout_data) == 0:
+                logger.error(f"🚨🚨🚨 CRITICAL BUG DETECTED! 🚨🚨🚨")
+                logger.error(f"   Started with {initial_timeout_count} timeout entries")
+                logger.error(f"   Now have {len(timeout_data)} entries (EMPTY!)")
+                logger.error(f"   All timeout data was LOST during processing!")
+                logger.error(f"   Ping results count: {len(ping_results)}")
+                logger.error(f"   This will cause counter reset bug!")
+                logger.error(f"   Stack trace point: Before _write_timeout_data()")
+            
             if timeout_data:
-                sample_devices = list(timeout_data.values())[:3]  # Log first 3 devices
-                for dev in sample_devices:
-                    logger.info(f"   • {dev.get('hostname')} ({dev.get('ip_address')}): {dev.get('consecutive_timeouts')}x")
+                logger.info(f"📋 Complete list of {len(timeout_data)} devices to be written:")
+                for ip, dev in timeout_data.items():
+                    logger.info(f"   • {dev.get('hostname')} ({ip}): {dev.get('consecutive_timeouts')}x")
+            else:
+                logger.warning(f"⚠️  timeout_data is EMPTY - CSV will be cleared!")
+                logger.warning(f"   If this happens repeatedly, it's the BUG causing counter resets!")
             
             # Write updated data back to CSV
             self._write_timeout_data(timeout_data)
-            logger.info(f"✅ CSV write completed")
+            logger.info(f"✅ CSV write completed - {len(timeout_data)} entries written")
             
             # Check and create incidents for devices that have been down for > 1 hour
             if self.incident_manager and timeout_data:
