@@ -138,21 +138,43 @@ class TimeoutTracker:
         
         with self._timeout_file_lock:  # Thread lock
             try:
+                # Check file size before reading - if too small, might be mid-write
+                file_size = os.path.getsize(self.timeout_csv_path)
+                if file_size < 100:  # Less than header size
+                    logger.warning(f"⚠️  CSV file too small ({file_size} bytes) - might be corrupted or mid-write")
+                    # Try to wait a moment and retry
+                    import time
+                    time.sleep(0.05)  # 50ms
+                    file_size = os.path.getsize(self.timeout_csv_path)
+                    if file_size < 100:
+                        logger.error(f"❌ CSV still too small after retry - returning empty")
+                        return {}
+                
                 with open(self.timeout_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
                     self._lock_file(csvfile)  # File lock (Unix)
                     try:
                         reader = csv.DictReader(csvfile)
+                        row_count = 0
                         for row in reader:
-                            ip_address = row['ip_address']
-                            timeout_data[ip_address] = dict(row)
+                            ip_address = row.get('ip_address')
+                            if ip_address:  # Validate row has IP
+                                timeout_data[ip_address] = dict(row)
+                                row_count += 1
+                        
+                        # Validation: If file is large but we read 0 rows, something is wrong
+                        if file_size > 200 and row_count == 0:
+                            logger.error(f"❌ File size {file_size} bytes but read 0 rows - CSV might be corrupted!")
+                            
                     finally:
                         self._unlock_file(csvfile)
                 
-                logger.debug(f"Read {len(timeout_data)} timeout entries from CSV")
+                logger.debug(f"Read {len(timeout_data)} timeout entries from CSV (file size: {file_size} bytes)")
                 return timeout_data
                 
             except Exception as e:
                 logger.error(f"Error reading timeout CSV: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 return {}
     
     def _write_timeout_data(self, timeout_data: Dict[str, Dict]):
@@ -208,8 +230,15 @@ class TimeoutTracker:
                         
                         for row_data in sorted_data:
                             writer.writerow(row_data)
+                        
+                        # Force flush to disk
+                        csvfile.flush()
+                        os.fsync(csvfile.fileno())
                     finally:
                         self._unlock_file(csvfile)
+                
+                # File is closed here (exited 'with' block)
+                # Now it's safe to do atomic rename
                 
                 # Atomic rename (atomic operation on Unix/Linux)
                 os.replace(temp_path, self.timeout_csv_path)
@@ -493,6 +522,16 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                 
                 # CHECKPOINT: Store initial count for validation later
                 initial_timeout_count = len(timeout_data)
+                
+                # Check if CSV file exists and has content but read returned empty
+                if os.path.exists(self.timeout_csv_path):
+                    actual_file_size = os.path.getsize(self.timeout_csv_path)
+                    if actual_file_size > 200 and len(timeout_data) == 0:
+                        logger.error(f"🚨 CSV FILE CORRUPTION DETECTED!")
+                        logger.error(f"   File exists: {self.timeout_csv_path}")
+                        logger.error(f"   File size: {actual_file_size} bytes (should have data)")
+                        logger.error(f"   But _read_timeout_data() returned: {len(timeout_data)} entries")
+                        logger.error(f"   This will cause ALL counters to reset to 1!")
             
                 # DEBUG: Log what was read from CSV
                 logger.warning(f"📖 READ FROM CSV: {len(timeout_data)} timeout entries, {len(alerted_data)} alerted")
@@ -541,7 +580,10 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                 
                     # Skip if this IP was already processed in this cycle (prevent duplicates)
                     if ip_address in processed_ips:
-                        logger.warning(f"⚠️ Duplicate IP {ip_address} in ping_results - skipping to prevent duplicate notifications")
+                        logger.error(f"🚨 DUPLICATE IP DETECTED: {ip_address} already processed in this cycle!")
+                        logger.error(f"   Previous status: {'SUCCESS' if ip_address not in timeout_data else 'TIMEOUT'}")
+                        logger.error(f"   Current status: {'SUCCESS' if ping_success else 'TIMEOUT'}")
+                        logger.error(f"   This could cause counter reset! Skipping duplicate.")
                         continue
                 
                     processed_ips.add(ip_address)
@@ -588,7 +630,8 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                         
                             # Hapus dari timeout_data
                             del timeout_data[ip_address]
-                            logger.debug(f"Removed {ip_address} from timeout tracking (ping successful)")
+                            logger.warning(f"🗑️  DELETED: {hostname} ({ip_address}) removed from timeout_data (ping successful)")
+                            logger.warning(f"   Reason: Ping SUCCESS - device recovered")
                     else:
                         # Ping failed - add or update timeout tracking
                         if ip_address in timeout_data:
