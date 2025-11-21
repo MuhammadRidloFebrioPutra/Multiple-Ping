@@ -1,8 +1,15 @@
 import os
 import csv
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+
+try:
+    import fcntl  # Unix-based file locking (Linux/CentOS)
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False  # Windows doesn't have fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,10 @@ class TimeoutTracker:
         self.timeout_csv_path = os.path.join(self.timeout_dir, self.timeout_filename)
         self.alerted_list_filename = 'whatsapp_alerted_list.csv'
         self.alerted_list_csv_path = os.path.join(self.timeout_dir, self.alerted_list_filename)
+        
+        # Thread locks for file operations (prevent race conditions)
+        self._timeout_file_lock = threading.Lock()
+        self._alerted_file_lock = threading.Lock()
 
         # WhatsApp Alert Configuration
         self.whatsapp_enabled = getattr(config, 'ENABLE_WHATSAPP_TIMEOUT_ALERTS', True)
@@ -79,6 +90,22 @@ class TimeoutTracker:
         logger.info(f"Alerted List initialized - CSV: {self.alerted_list_csv_path}")
         logger.info(f"WhatsApp alerts: {'enabled' if self.whatsapp_enabled else 'disabled'} (threshold: {self.whatsapp_threshold})")
     
+    def _lock_file(self, file_obj):
+        """Lock file for exclusive access (Unix only)"""
+        if HAS_FCNTL:
+            try:
+                fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+            except Exception as e:
+                logger.warning(f"Could not acquire file lock: {e}")
+    
+    def _unlock_file(self, file_obj):
+        """Unlock file (Unix only)"""
+        if HAS_FCNTL:
+            try:
+                fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+            except Exception as e:
+                logger.warning(f"Could not release file lock: {e}")
+    
     def _initialize_timeout_csv(self):
         """Initialize timeout CSV file with headers if not exists"""
         if not os.path.exists(self.timeout_csv_path):
@@ -102,83 +129,125 @@ class TimeoutTracker:
                 logger.error(f"Error creating timeout CSV: {e}")
     
     def _read_timeout_data(self) -> Dict[str, Dict]:
-        """Read existing timeout data from CSV"""
+        """Read existing timeout data from CSV with file locking"""
         timeout_data = {}
         
         if not os.path.exists(self.timeout_csv_path):
             return timeout_data
         
-        try:
-            with open(self.timeout_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    ip_address = row['ip_address']
-                    timeout_data[ip_address] = dict(row)
-            
-            logger.debug(f"Read {len(timeout_data)} timeout entries from CSV")
-            return timeout_data
-            
-        except Exception as e:
-            logger.error(f"Error reading timeout CSV: {e}")
-            return {}
+        with self._timeout_file_lock:  # Thread lock
+            try:
+                with open(self.timeout_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+                    self._lock_file(csvfile)  # File lock (Unix)
+                    try:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            ip_address = row['ip_address']
+                            timeout_data[ip_address] = dict(row)
+                    finally:
+                        self._unlock_file(csvfile)
+                
+                logger.debug(f"Read {len(timeout_data)} timeout entries from CSV")
+                return timeout_data
+                
+            except Exception as e:
+                logger.error(f"Error reading timeout CSV: {e}")
+                return {}
     
     def _write_timeout_data(self, timeout_data: Dict[str, Dict]):
-        """Write timeout data to CSV"""
-        try:
-            with open(self.timeout_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.timeout_headers)
-                writer.writeheader()
+        """Write timeout data to CSV with file locking and atomic write"""
+        with self._timeout_file_lock:  # Thread lock
+            try:
+                # Atomic write: write to temp file first, then rename
+                temp_path = self.timeout_csv_path + '.tmp'
                 
-                # Sort by consecutive_timeouts (descending) for easier monitoring
-                sorted_data = sorted(
-                    timeout_data.values(), 
-                    key=lambda x: int(x.get('consecutive_timeouts', 0)), 
-                    reverse=True
-                )
+                with open(temp_path, 'w', newline='', encoding='utf-8') as csvfile:
+                    self._lock_file(csvfile)  # File lock (Unix)
+                    try:
+                        writer = csv.DictWriter(csvfile, fieldnames=self.timeout_headers)
+                        writer.writeheader()
+                        
+                        # Sort by consecutive_timeouts (descending) for easier monitoring
+                        sorted_data = sorted(
+                            timeout_data.values(), 
+                            key=lambda x: int(x.get('consecutive_timeouts', 0)), 
+                            reverse=True
+                        )
+                        
+                        for row_data in sorted_data:
+                            writer.writerow(row_data)
+                    finally:
+                        self._unlock_file(csvfile)
                 
-                for row_data in sorted_data:
-                    writer.writerow(row_data)
-                    
-            logger.debug(f"Written {len(timeout_data)} timeout entries to CSV")
-            
-        except Exception as e:
-            logger.error(f"Error writing timeout CSV: {e}")
+                # Atomic rename (atomic operation on Unix/Linux)
+                os.replace(temp_path, self.timeout_csv_path)
+                logger.debug(f"Written {len(timeout_data)} timeout entries to CSV (atomic)")
+                
+            except Exception as e:
+                logger.error(f"Error writing timeout CSV: {e}")
+                # Cleanup temp file if exists
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
 
     def _read_alerted_list(self) -> Dict[str, datetime]:
-        """Read last WhatsApp alert times from internal tracking"""
+        """Read last WhatsApp alert times from internal tracking with file locking"""
         alerted_data = {}
         if not os.path.exists(self.alerted_list_csv_path):
             return alerted_data
         
-        try:
-            with open(self.alerted_list_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    ip_address = row['ip_address']
-                    alerted_data[ip_address] = dict(row)
-            
-            logger.debug(f"Read {len(alerted_data)} timeout entries from CSV")
-            return alerted_data
-            
-        except Exception as e:
-            logger.error(f"Error reading timeout CSV: {e}")
-            return {}
+        with self._alerted_file_lock:  # Thread lock
+            try:
+                with open(self.alerted_list_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+                    self._lock_file(csvfile)  # File lock (Unix)
+                    try:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            ip_address = row['ip_address']
+                            alerted_data[ip_address] = dict(row)
+                    finally:
+                        self._unlock_file(csvfile)
+                
+                logger.debug(f"Read {len(alerted_data)} timeout entries from CSV")
+                return alerted_data
+                
+            except Exception as e:
+                logger.error(f"Error reading timeout CSV: {e}")
+                return {}
     
     def _write_alerted_list(self, alerted_data: Dict[str, Dict]):
-        """Write last WhatsApp alert times to internal tracking"""
-        try:
-            with open(self.alerted_list_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.alerted_list_headers)
-                writer.writeheader()
+        """Write last WhatsApp alert times to internal tracking with file locking"""
+        with self._alerted_file_lock:  # Thread lock
+            try:
+                # Atomic write: write to temp file first, then rename
+                temp_path = self.alerted_list_csv_path + '.tmp'
                 
-                # Write all alerted devices
-                for row_data in alerted_data.values():
-                    writer.writerow(row_data)
-                    
-            logger.debug(f"Written {len(alerted_data)} alerted entries to CSV")
-            
-        except Exception as e:
-            logger.error(f"Error writing alerted list CSV: {e}")
+                with open(temp_path, 'w', newline='', encoding='utf-8') as csvfile:
+                    self._lock_file(csvfile)  # File lock (Unix)
+                    try:
+                        writer = csv.DictWriter(csvfile, fieldnames=self.alerted_list_headers)
+                        writer.writeheader()
+                        
+                        # Write all alerted devices
+                        for row_data in alerted_data.values():
+                            writer.writerow(row_data)
+                    finally:
+                        self._unlock_file(csvfile)
+                
+                # Atomic rename
+                os.replace(temp_path, self.alerted_list_csv_path)
+                logger.debug(f"Written {len(alerted_data)} alerted entries to CSV (atomic)")
+                
+            except Exception as e:
+                logger.error(f"Error writing alerted list CSV: {e}")
+                # Cleanup temp file if exists
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
 
     def _should_send_whatsapp_alert(self, ip_address: str, consecutive_timeouts: int, alerted_data: Dict = None) -> bool:
         """
@@ -264,7 +333,7 @@ class TimeoutTracker:
             return False
 
     def _add_to_alerted_list(self, device_data: Dict):
-        """Add device to alerted_list.csv"""
+        """Add device to alerted_list.csv with file locking"""
         try:
             alerted_data = self._read_alerted_list()
             ip_address = device_data.get('ip_address')
@@ -274,12 +343,8 @@ class TimeoutTracker:
                     'hostname': device_data.get('hostname', ''),
                     'device_id': device_data.get('device_id', ''),
                 }
-                # Write back to CSV
-                with open(self.alerted_list_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.DictWriter(csvfile, fieldnames=self.alerted_list_headers)
-                    writer.writeheader()
-                    for row in alerted_data.values():
-                        writer.writerow(row)
+                # Write back to CSV using atomic write method
+                self._write_alerted_list(alerted_data)
                 logger.info(f"Added {ip_address} to alerted_list.csv")
         except Exception as e:
             logger.error(f"Error adding to alerted_list.csv: {e}")
@@ -524,12 +589,8 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
             # 2. Device tidak ada lagi di inventaris (handled by stale_ips)
             
             # Write updated alerted_data back to CSV (includes newly alerted devices)
-            with open(self.alerted_list_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.alerted_list_headers)
-                writer.writeheader()
-                for row in alerted_data.values():
-                    writer.writerow(row)
-            logger.debug(f"Written {len(alerted_data)} alerted devices to CSV")
+            self._write_alerted_list(alerted_data)
+            logger.debug(f"Updated {len(alerted_data)} alerted devices in CSV")
             
             # Write updated data back to CSV
             self._write_timeout_data(timeout_data)
