@@ -495,13 +495,13 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                 initial_timeout_count = len(timeout_data)
             
                 # DEBUG: Log what was read from CSV
-                logger.info(f"📖 Read from CSV: {len(timeout_data)} timeout entries, {len(alerted_data)} alerted")
+                logger.warning(f"📖 READ FROM CSV: {len(timeout_data)} timeout entries, {len(alerted_data)} alerted")
                 if timeout_data:
-                    logger.info(f"📋 Timeout devices in CSV:")
+                    logger.warning(f"📋 Devices currently in timeout tracking:")
                     for ip, dev in timeout_data.items():
-                        logger.info(f"   • {dev.get('hostname')} ({ip}): {dev.get('consecutive_timeouts')}x")
+                        logger.warning(f"   • {dev.get('hostname')} ({ip}): {dev.get('consecutive_timeouts')}x")
                 else:
-                    logger.info(f"   ℹ️  No timeout devices in CSV yet")
+                    logger.warning(f"   ℹ️  CSV is EMPTY - no timeout devices yet")
             
                 # Print summary at start
                 print(f"\n⏱️  Timeout Tracking Cycle - {datetime.now().strftime('%H:%M:%S')}")
@@ -598,7 +598,8 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                             hostname = timeout_data[ip_address].get('hostname', ip_address)
                         
                             # DEBUG: Log before update
-                            logger.info(f"📈 Updating timeout: {hostname} ({ip_address}) {current_count}x → {new_count}x")
+                            logger.warning(f"📈 INCREMENT: {hostname} ({ip_address}) {current_count}x → {new_count}x")
+                            logger.warning(f"   Device WAS in timeout_data, incrementing counter")
                         
                             timeout_data[ip_address]['consecutive_timeouts'] = str(new_count)
                             timeout_data[ip_address]['last_timeout'] = current_time
@@ -615,7 +616,9 @@ Pesan ini dikirim otomatis oleh Sistematis Sub Reg Jawa."""
                         else:
                             # Add new entry
                             hostname = result.get('hostname', ip_address)
-                            logger.info(f"🆕 New timeout device: {hostname} ({ip_address}) - starting at 1x")
+                            logger.warning(f"🆕 NEW DEVICE: {hostname} ({ip_address}) - starting at 1x")
+                            logger.warning(f"   Device NOT in timeout_data, adding as new")
+                            logger.warning(f"   timeout_data keys: {list(timeout_data.keys())[:10]}")
                         
                             timeout_data[ip_address] = {
                                 'ip_address': ip_address,
