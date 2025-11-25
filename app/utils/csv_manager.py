@@ -235,40 +235,35 @@ class CSVManager:
         timestamp = datetime.now()
         csv_filename = f"ping_results_{timestamp.strftime('%Y%m%d')}.csv"
         csv_path = os.path.join(self.csv_dir, csv_filename)
-        
-        # Gunakan temporary file di direktori yang sama (biar atomic rename works)
-        temp_file = tempfile.NamedTemporaryFile(
-            mode='w', newline='', encoding='utf-8', 
-            prefix=csv_filename + '.', suffix='.tmp',
-            dir=self.csv_dir, delete=False
+
+        # Buat temporary file di folder yang sama (penting!)
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            prefix=f"{csv_filename}.",
+            suffix=".tmp",
+            dir=self.csv_dir
         )
-        temp_path = temp_file.name
 
         try:
-            writer = csv.DictWriter(temp_file, fieldnames=self.csv_headers)
-            writer.writeheader()
+            # Pastikan file langsung kosong dan siap tulis
+            os.close(tmp_fd)  # kita tidak pakai fd, kita buka ulang dengan encoding
 
-            # Read existing data
+            # Baca data lama (kalau file asli ada dan tidak rusak)
             existing_data = {}
-            if os.path.exists(csv_path):
+            if os.path.exists(csv_path) and os.path.getsize(csv_path) > 0:
                 try:
-                    with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                        reader = csv.DictReader(csvfile)
+                    with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
                         for row in reader:
-                            if row.get('ip_address'):  # safety
+                            if row.get('ip_address'):
                                 existing_data[row['ip_address']] = row
                 except Exception as e:
-                    logger.warning(f"Gagal baca existing CSV (mungkin rusak): {e}")
-                    existing_data = {}
+                    logger.warning(f"File CSV lama rusak, mulai dari nol: {e}")
 
-            # Prune jika perlu
+            # Prune kalau perlu
             if active_ips is not None:
-                active_set = set(active_ips)
-                removed = [ip for ip in existing_data if ip not in active_set]
-                for ip in removed:
-                    existing_data.pop(ip, None)
-                if removed:
-                    logger.info(f"Pruned {len(removed)} stale IP(s)")
+                for ip in list(existing_data.keys()):
+                    if ip not in active_ips:
+                        existing_data.pop(ip, None)
 
             # Update dengan hasil terbaru
             for result in results:
@@ -276,30 +271,35 @@ class CSVManager:
                 row = {k: v for k, v in result.items() if k in self.csv_headers}
                 existing_data[ip] = row
 
-            # Tulis semua ke temporary file
-            for row_data in existing_data.values():
-                writer.writerow(row_data)
+            # Tulis ke temporary file
+            with open(tmp_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=self.csv_headers)
+                writer.writeheader()
+                for row in existing_data.values():
+                    writer.writerow(row)
+                
+                # PAKSA tulis ke disk sebelum rename
+                f.flush()
+                os.fsync(f.fileno())
 
-            # Paksa tulis ke disk sebelum rename
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
-            temp_file.close()
-
-            # Atomic replace: ini yang bikin aman 100%
-            shutil.move(temp_path, csv_path)
-
-            logger.info(f"CSV berhasil diupdate: {csv_filename} ({len(existing_data)} devices)")
+            # Atomic replace → ini yang bikin tidak pernah truncated
+            shutil.move(tmp_path, csv_path)
+            
+            logger.info(f"CSV updated safely → {csv_filename} ({len(existing_data)} devices)")
 
         except Exception as e:
-            logger.error(f"Error saat menulis CSV: {e}")
-            # Bersihkan temp file kalau gagal
+            logger.error(f"GAGAL tulis CSV: {e}")
+            # Bersihkan file temporary kalau gagal
             try:
-                temp_file.close()
-            except:
-                pass
-            try:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
             except:
                 pass
             raise
+        finally:
+            # Kalau entah kenapa tmp_path masih ada (super rare)
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except:
+                pass
