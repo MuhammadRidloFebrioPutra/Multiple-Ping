@@ -1,6 +1,8 @@
 import os
 import csv
 import logging
+import tempfile
+import shutil
 from datetime import datetime
 from typing import List, Dict
 
@@ -25,60 +27,60 @@ class CSVManager:
             'merk', 'os', 'kondisi', 'id_lokasi'
         ]
     
-    def write_ping_results_to_csv(self, results: List[Dict], active_ips: List[str] = None):
-        """
-        Write/Update ping results to CSV file.
-        Behavior:
-        - Update (replace) row per IP yang masih aktif
-        - Hapus IP yang sudah tidak ada lagi (misal kondisi berubah jadi 'hilang') jika active_ips disediakan
-        Param:
-          results: list hasil ping cycle sekarang
-          active_ips: daftar IP aktif dari database (optional). Jika diberikan, CSV akan dipruning sesuai daftar ini.
-        """
-        timestamp = datetime.now()
-        csv_filename = f"ping_results_{timestamp.strftime('%Y%m%d')}.csv"
-        csv_path = os.path.join(self.csv_dir, csv_filename)
+    # def write_ping_results_to_csv(self, results: List[Dict], active_ips: List[str] = None):
+    #     """
+    #     Write/Update ping results to CSV file.
+    #     Behavior:
+    #     - Update (replace) row per IP yang masih aktif
+    #     - Hapus IP yang sudah tidak ada lagi (misal kondisi berubah jadi 'hilang') jika active_ips disediakan
+    #     Param:
+    #       results: list hasil ping cycle sekarang
+    #       active_ips: daftar IP aktif dari database (optional). Jika diberikan, CSV akan dipruning sesuai daftar ini.
+    #     """
+    #     timestamp = datetime.now()
+    #     csv_filename = f"ping_results_{timestamp.strftime('%Y%m%d')}.csv"
+    #     csv_path = os.path.join(self.csv_dir, csv_filename)
         
-        try:
-            # Read existing data if file exists
-            existing_data = {}
-            if os.path.exists(csv_path):
-                with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    for row in reader:
-                        # Use ip_address as key for existing data
-                        existing_data[row['ip_address']] = row
+    #     try:
+    #         # Read existing data if file exists
+    #         existing_data = {}
+    #         if os.path.exists(csv_path):
+    #             with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+    #                 reader = csv.DictReader(csvfile)
+    #                 for row in reader:
+    #                     # Use ip_address as key for existing data
+    #                     existing_data[row['ip_address']] = row
             
-            # Jika active_ips diberikan, prune entries yang tidak lagi aktif
-            if active_ips is not None:
-                active_set = set(active_ips)
-                removed = [ip for ip in existing_data.keys() if ip not in active_set]
-                if removed:
-                    for ip in removed:
-                        existing_data.pop(ip, None)
-                    logger.info(f"Pruned {len(removed)} stale IP(s) from CSV: {removed}")
+    #         # Jika active_ips diberikan, prune entries yang tidak lagi aktif
+    #         if active_ips is not None:
+    #             active_set = set(active_ips)
+    #             removed = [ip for ip in existing_data.keys() if ip not in active_set]
+    #             if removed:
+    #                 for ip in removed:
+    #                     existing_data.pop(ip, None)
+    #                 logger.info(f"Pruned {len(removed)} stale IP(s) from CSV: {removed}")
 
-            # Update existing data with new results
-            for result in results:
-                ip_address = result['ip_address']
-                # Remove processing_time_ms from CSV output
-                csv_row = {k: v for k, v in result.items() if k in self.csv_headers}
-                existing_data[ip_address] = csv_row
+    #         # Update existing data with new results
+    #         for result in results:
+    #             ip_address = result['ip_address']
+    #             # Remove processing_time_ms from CSV output
+    #             csv_row = {k: v for k, v in result.items() if k in self.csv_headers}
+    #             existing_data[ip_address] = csv_row
             
-            # Write all data back to CSV (overwrites the file)
-            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.csv_headers)
-                writer.writeheader()
+    #         # Write all data back to CSV (overwrites the file)
+    #         with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+    #             writer = csv.DictWriter(csvfile, fieldnames=self.csv_headers)
+    #             writer.writeheader()
                 
-                # Write all data (updated and existing)
-                for ip_address, row_data in existing_data.items():
-                    writer.writerow(row_data)
+    #             # Write all data (updated and existing)
+    #             for ip_address, row_data in existing_data.items():
+    #                 writer.writerow(row_data)
                     
-            logger.info(f"Successfully updated {len(results)} ping results in {csv_filename}")
-            logger.info(f"Total active unique IPs in CSV: {len(existing_data)}")
+    #         logger.info(f"Successfully updated {len(results)} ping results in {csv_filename}")
+    #         logger.info(f"Total active unique IPs in CSV: {len(existing_data)}")
             
-        except Exception as e:
-            logger.error(f"Error writing to CSV file: {e}")
+    #     except Exception as e:
+    #         logger.error(f"Error writing to CSV file: {e}")
     
     def get_latest_ping_results_from_csv(self, limit: int = None) -> List[Dict]:
         """
@@ -226,3 +228,78 @@ class CSVManager:
         except Exception as e:
             logger.error(f"Error getting CSV statistics: {e}")
             return {}
+        
+
+
+    def write_ping_results_to_csv(self, results: List[Dict], active_ips: List[str] = None):
+        timestamp = datetime.now()
+        csv_filename = f"ping_results_{timestamp.strftime('%Y%m%d')}.csv"
+        csv_path = os.path.join(self.csv_dir, csv_filename)
+        
+        # Gunakan temporary file di direktori yang sama (biar atomic rename works)
+        temp_file = tempfile.NamedTemporaryFile(
+            mode='w', newline='', encoding='utf-8', 
+            prefix=csv_filename + '.', suffix='.tmp',
+            dir=self.csv_dir, delete=False
+        )
+        temp_path = temp_file.name
+
+        try:
+            writer = csv.DictWriter(temp_file, fieldnames=self.csv_headers)
+            writer.writeheader()
+
+            # Read existing data
+            existing_data = {}
+            if os.path.exists(csv_path):
+                try:
+                    with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            if row.get('ip_address'):  # safety
+                                existing_data[row['ip_address']] = row
+                except Exception as e:
+                    logger.warning(f"Gagal baca existing CSV (mungkin rusak): {e}")
+                    existing_data = {}
+
+            # Prune jika perlu
+            if active_ips is not None:
+                active_set = set(active_ips)
+                removed = [ip for ip in existing_data if ip not in active_set]
+                for ip in removed:
+                    existing_data.pop(ip, None)
+                if removed:
+                    logger.info(f"Pruned {len(removed)} stale IP(s)")
+
+            # Update dengan hasil terbaru
+            for result in results:
+                ip = result['ip_address']
+                row = {k: v for k, v in result.items() if k in self.csv_headers}
+                existing_data[ip] = row
+
+            # Tulis semua ke temporary file
+            for row_data in existing_data.values():
+                writer.writerow(row_data)
+
+            # Paksa tulis ke disk sebelum rename
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+            temp_file.close()
+
+            # Atomic replace: ini yang bikin aman 100%
+            shutil.move(temp_path, csv_path)
+
+            logger.info(f"CSV berhasil diupdate: {csv_filename} ({len(existing_data)} devices)")
+
+        except Exception as e:
+            logger.error(f"Error saat menulis CSV: {e}")
+            # Bersihkan temp file kalau gagal
+            try:
+                temp_file.close()
+            except:
+                pass
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except:
+                pass
+            raise
