@@ -31,16 +31,11 @@ def format_indonesian_date(dt: datetime) -> str:
 class WatzapAPI:
     """Class untuk menangani komunikasi dengan Watzap API"""
     
-    # Default API Key, Device Key, dan Group ID
-    DEFAULT_API_KEY = "V3ELWOCBWBWHDEMX"
-    DEFAULT_NUMBER_KEY = "TjAV4PteKJFfLQf6"  # Device key dari Watzap
-    DEFAULT_GROUP_ID = "120363406944056502@g.us"
-    
     def __init__(self, api_key: Optional[str] = None, number_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv('WATZAP_API_KEY', self.DEFAULT_API_KEY)
-        self.number_key = number_key or os.getenv('WATZAP_NUMBER_KEY', self.DEFAULT_NUMBER_KEY)
+        self.api_key = api_key or os.getenv('WATZAP_API_KEY')
+        self.number_key = number_key or os.getenv('WATZAP_NUMBER_KEY')
         self.base_url = "https://api.watzap.id/v1"
-        self.default_group_id = self.DEFAULT_GROUP_ID
+        self.default_group_id = os.getenv('WATZAP_GROUP_ID')
         
         if not self.api_key:
             logging.warning("WATZAP_API_KEY tidak ditemukan di environment variables")
@@ -118,6 +113,64 @@ class WatzapAPI:
             if hasattr(e, 'response') and e.response is not None:
                 logging.error(f"   Response Status: {e.response.status_code}")
                 logging.error(f"Response Body: {e.response.text}")
+            return {
+                "status": "error",
+                "message": f"Gagal mengirim pesan: {str(e)}",
+                "error_detail": str(e)
+            }
+    
+    def send_message_to_personal(self, phone_number: str, message: str) -> Dict:
+        """
+        Kirim pesan ke nomor WhatsApp personal
+        
+        Args:
+            phone_number: Nomor WhatsApp tujuan (format: 6281234567890)
+            message: Pesan yang akan dikirim
+            
+        Returns:
+            Dict dengan status response
+        """
+        try:
+            # Endpoint untuk personal message
+            endpoint = f"{self.base_url}/send_message"
+            
+            payload = {
+                "api_key": self.api_key,
+                "number_key": self.number_key,
+                "phone_no": phone_number,
+                "message": message
+            }
+            
+            logging.info(f"📡 Mengirim pesan personal ke: {phone_number}")
+            
+            response = requests.post(
+                endpoint,
+                json=payload,
+                timeout=30
+            )
+            
+            result = response.json()
+            
+            if result.get('status') in ['1001', '1003'] or result.get('ack') == 'fatal_error':
+                logging.error(f"❌ API Error: {result.get('message')}")
+                return {
+                    "status": "error",
+                    "message": f"API Error: {result.get('message')}",
+                    "data": result
+                }
+            
+            response.raise_for_status()
+            
+            logging.info(f"✅ Pesan berhasil dikirim ke {phone_number}")
+            return {
+                "status": "success",
+                "message": "Pesan berhasil dikirim",
+                "data": result,
+                "response_code": response.status_code
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logging.error(f"❌ Error mengirim pesan ke {phone_number}: {e}")
             return {
                 "status": "error",
                 "message": f"Gagal mengirim pesan: {str(e)}",
