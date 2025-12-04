@@ -1,6 +1,8 @@
 import time
 import ping3  # type: ignore
 import logging
+import subprocess
+import platform
 from datetime import datetime
 from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,6 +21,83 @@ class PingExecutor:
         # Threading configuration
         self.max_workers = getattr(config, 'MAX_PING_WORKERS', 20)  # Max concurrent pings
         self.ping_timeout = getattr(config, 'PING_TIMEOUT', 3)  # Ping timeout in seconds
+        
+        # Platform detection for fallback mechanism
+        self.is_linux = platform.system().lower() == 'linux'
+        self.use_fallback = getattr(config, 'USE_SYSTEM_PING_FALLBACK', True)
+        
+        if self.is_linux:
+            logger.info("Running on Linux - system ping fallback enabled for reliability")
+    
+    def _ping_via_system(self, ip: str) -> Dict:
+        """
+        Fallback: Use system ping command (reliable on Linux/CentOS)
+        """
+        try:
+            # Linux ping command: -c 1 (count), -W timeout (wait)
+            cmd = ['ping', '-c', '1', '-W', str(int(self.ping_timeout)), ip]
+            
+            start = time.time()
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=self.ping_timeout + 1,
+                universal_newlines=True
+            )
+            elapsed = time.time() - start
+            
+            if result.returncode == 0:
+                # Parse time from output: "time=X.XX ms"
+                output = result.stdout
+                try:
+                    for line in output.split('\n'):
+                        if 'time=' in line:
+                            time_str = line.split('time=')[1].split()[0]
+                            response_ms = float(time_str)
+                            return {
+                                'success': True,
+                                'response_time_ms': round(response_ms, 2),
+                                'latency_ms': round(response_ms, 2),
+                                'error_message': None,
+                                'method': 'system_ping'
+                            }
+                except:
+                    pass
+                # Fallback jika parsing gagal tapi ping sukses
+                return {
+                    'success': True,
+                    'response_time_ms': round(elapsed * 1000, 2),
+                    'latency_ms': round(elapsed * 1000, 2),
+                    'error_message': None,
+                    'method': 'system_ping'
+                }
+            else:
+                # Ping failed
+                error = result.stderr or 'No response'
+                return {
+                    'success': False,
+                    'response_time_ms': None,
+                    'latency_ms': None,
+                    'error_message': f'System ping failed: {error.strip()[:100]}',
+                    'method': 'system_ping'
+                }
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'response_time_ms': None,
+                'latency_ms': None,
+                'error_message': 'System ping timeout',
+                'method': 'system_ping'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'response_time_ms': None,
+                'latency_ms': None,
+                'error_message': f'System ping error: {str(e)}',
+                'method': 'system_ping'
+            }
     
     def ping_single_device(self, device: Inventaris) -> Dict:
         """
@@ -26,6 +105,8 @@ class PingExecutor:
         """
         start_time = time.time()
         
+        # Try ping3 first
+        ping3_result = None
         try:
             # Using ping3 library for cross-platform ping
             response_time = ping3.ping(device.ip, timeout=self.ping_timeout)
@@ -33,36 +114,56 @@ class PingExecutor:
             # CRITICAL FIX: ping3 returns False for "Destination host unreachable"
             # We MUST check if response_time is a number (float), not just "not None"
             if response_time is not None and response_time is not False and isinstance(response_time, (int, float)):
-                result = {
+                ping3_result = {
                     'success': True,
                     'response_time_ms': round(response_time * 1000, 2),
                     'latency_ms': round(response_time * 1000, 2),
-                    'error_message': None
+                    'error_message': None,
+                    'method': 'ping3'
                 }
             elif response_time is False:
                 # False means "Destination host unreachable"
-                result = {
+                ping3_result = {
                     'success': False,
                     'response_time_ms': None,
                     'latency_ms': None,
-                    'error_message': 'Destination host unreachable'
+                    'error_message': 'Destination host unreachable (ping3)',
+                    'method': 'ping3'
                 }
             else:
                 # None means timeout
-                result = {
+                ping3_result = {
                     'success': False,
                     'response_time_ms': None,
                     'latency_ms': None,
-                    'error_message': 'No response (timeout)'
+                    'error_message': 'No response - timeout (ping3)',
+                    'method': 'ping3'
                 }
                 
         except Exception as e:
-            result = {
+            ping3_result = {
                 'success': False,
                 'response_time_ms': None,
                 'latency_ms': None,
-                'error_message': f"Ping error: {str(e)}"
+                'error_message': f"Ping3 error: {str(e)}",
+                'method': 'ping3'
             }
+        
+        # FALLBACK: Jika ping3 gagal DI LINUX dan fallback diaktifkan, coba system ping
+        result = ping3_result
+        if self.is_linux and self.use_fallback and not ping3_result['success']:
+            # Coba verifikasi dengan system ping
+            system_result = self._ping_via_system(device.ip)
+            
+            # Jika system ping berhasil tapi ping3 gagal = false positive dari ping3
+            if system_result['success']:
+                logger.warning(f"⚠️ FALSE POSITIVE terdeteksi untuk {device.ip}: ping3 gagal tapi system ping sukses")
+                logger.warning(f"   ping3: {ping3_result['error_message']}")
+                logger.warning(f"   system: {system_result['response_time_ms']}ms")
+                result = system_result  # Gunakan hasil system ping
+            else:
+                # Kedua method gagal - benar-benar timeout
+                result = ping3_result
         
         # Calculate total processing time
         processing_time = time.time() - start_time
@@ -77,6 +178,7 @@ class PingExecutor:
             'response_time_ms': result['response_time_ms'],
             'latency_ms': result['latency_ms'],
             'error_message': result['error_message'],
+            'ping_method': result.get('method', 'ping3'),
             'merk': device.merk,
             'os': device.os,
             'kondisi': device.kondisi,
